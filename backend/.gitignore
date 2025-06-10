@@ -1,0 +1,229 @@
+# =======================
+# PYTHON
+# =======================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# =======================
+# DJANGO
+# =======================
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# =======================
+# FLASK
+# =======================
+instance/
+.webassets-cache
+
+# =======================
+# FASTAPI
+# =======================
+# Nenhum arquivo específico, mas logs e cache são cobertos acima
+
+# =======================
+# SCRAPY
+# =======================
+.scrapy
+
+# =======================
+# SPHINX DOCUMENTATION
+# =======================
+docs/_build/
+
+# =======================
+# PYBUILDER
+# =======================
+.pybuilder/
+target/
+
+# =======================
+# JUPYTER NOTEBOOK
+# =======================
+.ipynb_checkpoints
+
+# =======================
+# IPYTHON
+# =======================
+profile_default/
+ipython_config.py
+
+# =======================
+# AMBIENTES VIRTUAIS
+# =======================
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# =======================
+# EDITORES / IDEs
+# =======================
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# PyCharm
+.idea/
+
+# =======================
+# BANCO DE DADOS
+# =======================
+*.db
+*.sqlite
+*.sqlite3
+database.db
+
+# =======================
+# LOGS
+# =======================
+logs/
+*.log
+
+# =======================
+# TEMPORÁRIOS
+# =======================
+*.tmp
+*.temp
+*~
+
+# =======================
+# SISTEMA OPERACIONAL
+# =======================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Linux
+*~
+
+# =======================
+# BACKUP E OUTROS
+# =======================
+*.bak
+*.backup
+*.old
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip 
