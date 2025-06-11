@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,9 +17,9 @@ const PipelineSteps = () => {
   
   const steps = [
     { id: 'upload', title: 'Upload dos Dados', component: DataUpload },
+    { id: 'split', title: 'Divisão dos Dados', component: TrainTestSplit },
     { id: 'preprocessing', title: 'Pré-processamento', component: DataPreprocessing },
     { id: 'features', title: 'Eng. de Atributos', component: FeatureEngineering },
-    { id: 'split', title: 'Treino/Teste', component: TrainTestSplit },
     { id: 'model', title: 'Seleção do Modelo', component: ModelSelection },
     { id: 'training', title: 'Treinamento', component: ModelTraining },
     { id: 'monitoring', title: 'Monitoramento', component: Monitoring }

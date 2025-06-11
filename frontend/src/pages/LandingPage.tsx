@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Building2, Activity, TrendingUp, Brain } from 'lucide-react';
+import { Building2, Activity, TrendingUp, Brain, BarChart3 } from 'lucide-react';
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -21,9 +20,19 @@ const LandingPage = () => {
           <h1 className="text-5xl font-bold text-gray-900 mb-4">
             Plataforma de Séries Temporais
           </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
             Solução completa para modelagem, treinamento e monitoramento de modelos de séries temporais com IA avançada
           </p>
+          
+          {/* Dashboard Access Button */}
+          <Button 
+            onClick={() => navigate('/dashboard')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg mb-8"
+            size="lg"
+          >
+            <BarChart3 className="h-5 w-5 mr-2" />
+            Acessar Dashboard
+          </Button>
         </div>
 
         {/* Main Action Cards */}
