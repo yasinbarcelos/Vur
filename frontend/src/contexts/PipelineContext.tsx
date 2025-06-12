@@ -17,6 +17,7 @@ export interface PipelineData {
   algorithm?: string;
   steps?: number;
   trainedModel?: any;
+  modelConfig?: any;
 }
 
 interface PipelineContextType {
@@ -48,7 +49,7 @@ const STORAGE_VERSION = 1;
 const PipelineContext = createContext<PipelineContextType | undefined>(undefined);
 
 export const PipelineProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const steps = ['upload', 'split', 'preprocessing', 'features', 'model', 'training'];
+  const steps = ['upload', 'preview', 'split', 'preprocessing', 'features', 'model', 'training'];
   
   // Função para carregar estado do localStorage
   const loadSavedState = (): PipelineState | null => {
@@ -152,10 +153,23 @@ export const PipelineProvider: React.FC<{ children: ReactNode }> = ({ children }
     setCurrentStep(steps[0]);
     setCompletedSteps([]);
     setPipelineData({
-      columns: [],
+      file: undefined,
       data: [],
+      columns: [],
+      targetColumn: '',
       dateColumn: '',
-      targetColumn: ''
+      preprocessingConfig: undefined,
+      processedData: undefined,
+      features: undefined,
+      trainSize: undefined,
+      validationSize: undefined,
+      testSize: undefined,
+      modelingType: undefined,
+      predictionHorizon: undefined,
+      algorithm: undefined,
+      steps: undefined,
+      trainedModel: undefined,
+      modelConfig: undefined
     });
   };
 

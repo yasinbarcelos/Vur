@@ -24,6 +24,7 @@ import {
   FileText
 } from 'lucide-react';
 import DataUpload from '@/components/pipeline/DataUpload';
+import DataPreview from '@/components/pipeline/DataPreview';
 import DataPreprocessing from '@/components/pipeline/DataPreprocessing';
 import FeatureEngineering from '@/components/pipeline/FeatureEngineering';
 import TrainTestSplit from '@/components/pipeline/TrainTestSplit';
@@ -58,6 +59,15 @@ const PipelineSteps = () => {
       component: DataUpload,
       icon: Upload,
       color: 'bg-blue-500'
+    },
+    { 
+      id: 'preview', 
+      title: 'Preview dos Dados', 
+      shortTitle: 'Preview',
+      description: 'Visualize e configure seus dados',
+      component: DataPreview,
+      icon: FileText,
+      color: 'bg-cyan-500'
     },
     { 
       id: 'split', 
@@ -103,15 +113,6 @@ const PipelineSteps = () => {
       component: ModelTraining,
       icon: Play,
       color: 'bg-red-500'
-    },
-    { 
-      id: 'monitoring', 
-      title: 'Monitoramento', 
-      shortTitle: 'Monitor',
-      description: 'Monitore performance e resultados',
-      component: Monitoring,
-      icon: Monitor,
-      color: 'bg-gray-500'
     }
   ];
 

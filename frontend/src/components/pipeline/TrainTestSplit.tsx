@@ -329,16 +329,26 @@ const TrainTestSplit = () => {
                       {splitStats ? `${splitStats.train.count} registros` : ''}
                     </span>
                   </div>
-              <Slider
+                  <Slider
                     value={[trainSize]}
-                    onValueChange={([value]) => setTrainSize(value)}
+                    onValueChange={([value]) => {
+                      const maxTrain = useValidation ? Math.min(85, 100 - validationSize - 10) : 90;
+                      const newTrainSize = Math.min(value, maxTrain);
+                      setTrainSize(newTrainSize);
+                    }}
                     min={40}
                     max={useValidation ? 85 : 90}
-                step={5}
-                className="w-full"
+                    step={1}
+                    className="w-full"
                     disabled={isProcessing}
-              />
-            </div>
+                  />
+                  <div className="w-full h-2 bg-gray-100 rounded-full">
+                    <div 
+                      className="h-2 bg-blue-500 rounded-full transition-all duration-300"
+                      style={{ width: `${trainSize}%` }}
+                    />
+                  </div>
+                </div>
 
                 {/* Validação */}
                 {useValidation && (
@@ -353,13 +363,23 @@ const TrainTestSplit = () => {
                     </div>
                     <Slider
                       value={[validationSize]}
-                      onValueChange={([value]) => setValidationSize(value)}
+                      onValueChange={([value]) => {
+                        const maxValidation = Math.min(30, 100 - trainSize - 10);
+                        const newValidationSize = Math.min(value, maxValidation);
+                        setValidationSize(newValidationSize);
+                      }}
                       min={5}
-                      max={Math.min(30, 100 - trainSize - 10)}
-                      step={5}
+                      max={30}
+                      step={1}
                       className="w-full"
                       disabled={isProcessing}
                     />
+                    <div className="w-full h-2 bg-gray-100 rounded-full">
+                      <div 
+                        className="h-2 bg-yellow-500 rounded-full transition-all duration-300"
+                        style={{ width: `${validationSize}%` }}
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -372,15 +392,43 @@ const TrainTestSplit = () => {
                     <span className="text-xs text-gray-500">
                       {splitStats ? `${splitStats.test.count} registros` : ''}
                     </span>
-              </div>
+                  </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full">
                     <div 
                       className="h-2 bg-purple-500 rounded-full transition-all duration-300"
                       style={{ width: `${testSize}%` }}
                     />
+                  </div>
+                </div>
+
+                {/* Barra de Progresso Total */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm font-medium text-gray-700">
+                      Total: {trainSize + (useValidation ? validationSize : 0) + testSize}%
+                    </Label>
+                    <span className="text-xs text-gray-500">
+                      {trainSize + (useValidation ? validationSize : 0) + testSize === 100 ? '✓ Válido' : '⚠ Ajustar'}
+                    </span>
+                  </div>
+                  <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden flex">
+                    <div 
+                      className="h-3 bg-blue-500 transition-all duration-300"
+                      style={{ width: `${trainSize}%` }}
+                    />
+                    {useValidation && (
+                      <div 
+                        className="h-3 bg-yellow-500 transition-all duration-300"
+                        style={{ width: `${validationSize}%` }}
+                      />
+                    )}
+                    <div 
+                      className="h-3 bg-purple-500 transition-all duration-300"
+                      style={{ width: `${testSize}%` }}
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
               {/* Resumo dos Conjuntos */}
               <div className="grid grid-cols-1 gap-2">

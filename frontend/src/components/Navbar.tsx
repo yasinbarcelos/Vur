@@ -14,8 +14,8 @@ const Navbar = () => {
   const location = useLocation();
 
   const navigationItems = [
-    { label: "Dashboard", path: "/dashboard", icon: "📊" },
-    { label: "Séries Temporais", path: "/monitoring", icon: "📈" },
+    // { label: "Dashboard", path: "/dashboard", icon: "📊" },
+    { label: "Monitoring", path: "/monitoring", icon: "📈" },
     { label: "Pipeline ML", path: "/pipeline", icon: "🔧" },
     { label: "Gerenciar Dados", path: "/data", icon: "💾" },
   ];
