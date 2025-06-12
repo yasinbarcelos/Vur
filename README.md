@@ -17,6 +17,7 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 ## ✨ Características
 
 ### 🎯 **Core Features**
+
 - **Upload de Dados**: Suporte para arquivos CSV com detecção automática de colunas
 - **Análise Exploratória**: Visualizações interativas e estatísticas descritivas
 - **Múltiplos Algoritmos**: ARIMA, LSTM, Prophet, Random Forest
@@ -24,6 +25,7 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 - **Interface Intuitiva**: Dashboard moderno e responsivo
 
 ### 🔧 **Funcionalidades Técnicas**
+
 - **Pipeline Completo**: Desde upload até deploy de modelos
 - **Validação Automática**: Detecção de problemas nos dados
 - **Métricas Avançadas**: MAE, RMSE, MAPE e visualizações
@@ -33,6 +35,7 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 ## 🛠️ Stack Tecnológica
 
 ### **Frontend**
+
 - **React 18** + **TypeScript**
 - **Vite** (Build tool)
 - **Tailwind CSS** (Styling)
@@ -41,6 +44,7 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 - **React Router** (Navegação)
 
 ### **Backend**
+
 - **FastAPI** (Framework Python)
 - **SQLAlchemy** (ORM)
 - **Alembic** (Migrações)
@@ -49,6 +53,7 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 - **Pydantic** (Validação)
 
 ### **Machine Learning**
+
 - **Pandas** + **NumPy** (Processamento)
 - **Scikit-learn** (ML tradicional)
 - **Statsmodels** (ARIMA)
@@ -56,6 +61,7 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 - **TensorFlow** (Deep Learning)
 
 ### **DevOps**
+
 - **Docker** + **Docker Compose**
 - **Nginx** (Proxy reverso)
 - **GitHub Actions** (CI/CD)
@@ -63,12 +69,14 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 ## 📋 Pré-requisitos
 
 ### **Para desenvolvimento local:**
+
 - **Node.js** 18+ e **npm**
 - **Python** 3.11+
 - **PostgreSQL** 15+
 - **Redis** 7+ (opcional)
 
 ### **Para Docker:**
+
 - **Docker** 20.10+
 - **Docker Compose** 2.0+
 
@@ -77,12 +85,14 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 ### **Opção 1: Docker (Recomendado)**
 
 1. **Clone o repositório:**
+
 ```bash
 git clone https://github.com/your-org/vur.git
 cd vur
 ```
 
 2. **Configure as variáveis de ambiente:**
+
 ```bash
 cp env.example .env
 # Edite o arquivo .env com suas configurações
@@ -91,6 +101,7 @@ cp env.example .env
 3. **Inicie os serviços:**
 
 #### **✅ Opção A: Inicialização Completa (Mais Lenta)**
+
 ```bash
 # Desenvolvimento - Todos os serviços
 docker-compose -f docker-compose.dev.yml up --build
@@ -100,6 +111,7 @@ docker-compose up --build
 ```
 
 #### **⚡ Opção B: Inicialização por Partes (Recomendado - Mais Rápido)**
+
 ```bash
 # 1. Iniciar apenas o banco de dados
 docker-compose up -d postgres
@@ -116,6 +128,7 @@ curl http://localhost:8000/health
 ```
 
 4. **Acesse a aplicação:**
+
 - **Backend API**: http://localhost:8000 ✅ **TESTADO E FUNCIONANDO**
 - **Docs da API**: http://localhost:8000/docs ✅ **TESTADO E FUNCIONANDO**
 - **Health Check**: http://localhost:8000/health ✅ **TESTADO E FUNCIONANDO**
@@ -124,6 +137,7 @@ curl http://localhost:8000/health
 ### **Opção 2: Desenvolvimento Local**
 
 #### **Backend Setup:**
+
 ```bash
 cd backend
 
@@ -143,6 +157,7 @@ uvicorn main:app --reload
 ```
 
 #### **Frontend Setup:**
+
 ```bash
 cd frontend
 
@@ -156,26 +171,31 @@ npm run dev
 ## 🎮 Uso
 
 ### **1. Upload de Dados**
+
 - Acesse a página de **Pipeline**
 - Faça upload de um arquivo CSV com dados de série temporal
 - O sistema detectará automaticamente colunas de data e valores
 
 ### **2. Análise Exploratória**
+
 - Visualize gráficos interativos dos seus dados
 - Analise estatísticas descritivas
 - Identifique padrões e tendências
 
 ### **3. Configuração do Modelo**
+
 - Escolha o algoritmo de ML (ARIMA, LSTM, Prophet, etc.)
 - Configure parâmetros específicos
 - Defina período de treinamento e teste
 
 ### **4. Treinamento**
+
 - Inicie o treinamento do modelo
 - Acompanhe o progresso em tempo real
 - Visualize métricas de performance
 
 ### **5. Monitoramento**
+
 - Acesse a página de **Monitoramento**
 - Selecione pipeline, modelo e banco de dados
 - Visualize previsões em tempo real
@@ -183,6 +203,7 @@ npm run dev
 ## 👨‍💻 Desenvolvimento
 
 ### **Estrutura do Projeto**
+
 ```
 vur/
 ├── frontend/                 # React + TypeScript
@@ -211,6 +232,7 @@ vur/
 ### **Scripts Úteis**
 
 #### **Frontend:**
+
 ```bash
 npm run dev          # Servidor de desenvolvimento
 npm run build        # Build de produção
@@ -220,6 +242,7 @@ npm run type-check   # Verificação de tipos
 ```
 
 #### **Backend:**
+
 ```bash
 uvicorn main:app --reload    # Servidor de desenvolvimento
 alembic revision --autogenerate -m "description"  # Nova migração
@@ -239,6 +262,7 @@ black .                      # Formatação de código
 ### **Comandos Docker Testados**
 
 #### **Inicialização (Recomendado)**
+
 ```bash
 # Método mais rápido - por partes
 docker-compose up -d postgres    # Iniciar banco
@@ -254,6 +278,7 @@ curl http://localhost:8000/health
 ```
 
 #### **Comandos de Gerenciamento**
+
 ```bash
 # Ver todos os containers
 docker ps
@@ -281,6 +306,7 @@ docker-compose exec postgres psql -U vur_user -d vur_db
 ```
 
 #### **Desenvolvimento Completo (Mais Lento)**
+
 ```bash
 # Desenvolvimento com hot reload
 docker-compose -f docker-compose.dev.yml up --build
@@ -292,21 +318,23 @@ docker-compose up --build
 ### **Serviços Disponíveis**
 
 #### **Desenvolvimento (Testado):**
+
 - **Backend API**: http://localhost:8000 ✅
 - **API Docs**: http://localhost:8000/docs ✅
-- **Health Check**: http://localhost:8000/health ✅
 - **PostgreSQL**: localhost:5432 ✅
 - **Frontend**: http://localhost:3000 (em desenvolvimento)
 - **Redis**: localhost:6379 (opcional)
 - **Adminer**: http://localhost:8080 (opcional)
 
 #### **Produção:**
+
 - **Application**: http://localhost
 - **API**: http://localhost/api
 
 ### **🔧 Troubleshooting**
 
 #### **Problema: Backend não inicia**
+
 ```bash
 # Verificar logs
 docker logs vur_backend_dev
@@ -321,6 +349,7 @@ netstat -ano | findstr :8000  # Windows
 ```
 
 #### **Problema: Banco de dados não conecta**
+
 ```bash
 # Verificar se PostgreSQL está rodando
 docker ps | grep postgres
@@ -334,6 +363,7 @@ docker-compose up -d postgres
 ```
 
 #### **Problema: Build do frontend muito lento**
+
 ```bash
 # O build do frontend pode demorar devido ao tamanho do contexto
 # Solução temporária: usar desenvolvimento local
@@ -343,6 +373,7 @@ npm run dev
 ```
 
 #### **Problema: Conflito de rede Docker**
+
 ```bash
 # Limpar redes Docker
 docker network prune -f
@@ -353,30 +384,36 @@ docker-compose up -d
 ## 📚 API Documentation
 
 A documentação completa da API está disponível em:
+
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
 ### **Principais Endpoints:**
 
 #### **Autenticação:**
+
 - `POST /auth/register` - Registro de usuário
 - `POST /auth/login` - Login
 - `GET /auth/me` - Perfil do usuário
 
 #### **Pipelines:**
+
 - `GET /pipelines` - Listar pipelines
 - `POST /pipelines` - Criar pipeline
 - `GET /pipelines/{id}` - Detalhes do pipeline
 
 #### **Datasets:**
+
 - `POST /datasets/upload` - Upload de CSV
 - `GET /datasets/{id}/preview` - Preview dos dados
 
 #### **Modelos:**
+
 - `POST /models/train` - Treinar modelo
 - `POST /models/{id}/predict` - Fazer previsão
 
 #### **Monitoramento:**
+
 - `GET /monitoring/predictions` - Previsões em tempo real
 - `GET /monitoring/system` - Métricas do sistema
 
@@ -389,6 +426,7 @@ A documentação completa da API está disponível em:
 5. Abra um **Pull Request**
 
 ### **Padrões de Código:**
+
 - **Frontend**: ESLint + Prettier
 - **Backend**: Black + isort + flake8
 - **Commits**: Conventional Commits
@@ -406,4 +444,4 @@ Este projeto está sob a licença **MIT**. Veja o arquivo [LICENSE](LICENSE) par
 
 ---
 
-**Desenvolvido com ❤️ pela equipe VUR** 
+**Desenvolvido com ❤️ pela equipe VUR**

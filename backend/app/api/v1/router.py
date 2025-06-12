@@ -4,7 +4,7 @@ Main API v1 router
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, pipelines, datasets, models, monitoring
+from app.api.v1.endpoints import auth, pipelines, datasets, models, monitoring, predictions
 
 api_router = APIRouter()
 
@@ -37,4 +37,10 @@ api_router.include_router(
     monitoring.router,
     prefix="/monitoring",
     tags=["Monitoring"]
-) 
+)
+
+api_router.include_router(
+    predictions.router,
+    prefix="/predictions",
+    tags=["Predictions"]
+)
