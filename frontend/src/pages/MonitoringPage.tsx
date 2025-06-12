@@ -279,10 +279,10 @@ const MonitoringPage = () => {
     setSelectedDatabase(databaseId);
     
     const database = availableDatabases.find(d => d.id === databaseId);
-    toast({
+      toast({
       title: "Banco de dados conectado!",
       description: `Conectado ao "${database?.name}" com sucesso`,
-    });
+      });
   };
 
   const toggleRealTimeMonitoring = () => {
@@ -298,12 +298,12 @@ const MonitoringPage = () => {
     setIsRealTimeActive(!isRealTimeActive);
     
     if (!isRealTimeActive) {
-      toast({
+    toast({
         title: "Monitoramento iniciado!",
         description: "Previsões em tempo real ativadas",
-      });
+    });
     } else {
-      toast({
+    toast({
         title: "Monitoramento pausado",
         description: "Previsões em tempo real pausadas",
       });
@@ -417,18 +417,18 @@ const MonitoringPage = () => {
             </CardContent>
           </Card>
 
-          {/* Seleção de Modelo */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+        {/* Seleção de Modelo */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
                 <Cpu className="w-5 h-5" />
                 Modelo
-              </CardTitle>
-              <CardDescription>
+            </CardTitle>
+            <CardDescription>
                 Selecione um modelo treinado
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
               <Select 
                 value={selectedModel} 
                 onValueChange={handleModelSelect}
@@ -462,18 +462,18 @@ const MonitoringPage = () => {
                         <div className="flex justify-between text-sm">
                           <span>MAE:</span>
                           <span className="font-medium">{model.metrics.mae}</span>
-                        </div>
+                      </div>
                         <div className="flex justify-between text-sm">
                           <span>RMSE:</span>
                           <span className="font-medium">{model.metrics.rmse}</span>
-                        </div>
+                    </div>
                       </>
                     ) : null;
                   })()}
-                </div>
+            </div>
               )}
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
 
           {/* Seleção de Banco de Dados */}
           <Card>
@@ -625,9 +625,9 @@ const MonitoringPage = () => {
                 <div>
                   <p className="text-sm text-gray-600">Disco</p>
                   <p className="text-2xl font-bold">{Math.round(systemMetrics.disk)}%</p>
-                </div>
+                    </div>
                 <HardDrive className="w-8 h-8 text-orange-500" />
-              </div>
+                  </div>
               <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                 <div 
                   className="bg-orange-500 h-2 rounded-full transition-all duration-300"
@@ -684,7 +684,7 @@ const MonitoringPage = () => {
                     <Tooltip />
                     <Legend />
                     <Area
-                      type="monotone"
+                      type="monotone" 
                       dataKey="confidence_upper"
                       stackId="1"
                       stroke="#94a3b8"
@@ -693,16 +693,16 @@ const MonitoringPage = () => {
                       name="Limite Superior"
                     />
                     <Area
-                      type="monotone"
-                      dataKey="confidence_lower"
+                      type="monotone" 
+                      dataKey="confidence_lower" 
                       stackId="1"
-                      stroke="#94a3b8"
+                      stroke="#94a3b8" 
                       fill="#ffffff"
                       fillOpacity={1}
                       name="Limite Inferior"
                     />
-                    <Line
-                      type="monotone"
+                    <Line 
+                      type="monotone" 
                       dataKey="predicted"
                       stroke="#10b981"
                       strokeWidth={3}
@@ -816,11 +816,11 @@ const MonitoringPage = () => {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+        <Card>
+          <CardHeader>
               <CardTitle className="text-lg">Status do Banco</CardTitle>
-            </CardHeader>
-            <CardContent>
+          </CardHeader>
+          <CardContent>
               {selectedDatabase ? (
                 (() => {
                   const database = availableDatabases.find(d => d.id === selectedDatabase);
@@ -845,14 +845,14 @@ const MonitoringPage = () => {
                         <span>Registros:</span>
                         <span className="font-medium">{database.recordCount.toLocaleString()}</span>
                       </div>
-                    </div>
+            </div>
                   ) : null;
                 })()
               ) : (
                 <p className="text-gray-500 text-center py-4">Nenhum banco selecionado</p>
               )}
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
         </div>
       </div>
     </div>
