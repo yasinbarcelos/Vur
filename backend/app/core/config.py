@@ -39,13 +39,9 @@ class Settings(BaseSettings):
     )
     
     # CORS
-    ALLOWED_ORIGINS: List[str] = Field(
-        default=[
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:3000",
-        ],
-        description="Allowed CORS origins"
+    ALLOWED_ORIGINS: str = Field(
+        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000",
+        description="Allowed CORS origins (comma-separated)"
     )
     
     ALLOWED_HOSTS: List[str] = Field(
@@ -119,12 +115,13 @@ class Settings(BaseSettings):
             raise ValueError(f"Log level must be one of: {allowed}")
         return v.upper()
     
-    @validator("ALLOWED_ORIGINS", pre=True)
-    def parse_cors_origins(cls, v):
-        """Parse CORS origins from string or list."""
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    def get_cors_origins(self) -> List[str]:
+        """Get CORS origins as a list."""
+        if isinstance(self.ALLOWED_ORIGINS, str):
+            if not self.ALLOWED_ORIGINS.strip():
+                return ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000"]
+            return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
+        return self.ALLOWED_ORIGINS
     
     @validator("ALLOWED_HOSTS", pre=True)
     def parse_allowed_hosts(cls, v):

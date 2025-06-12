@@ -89,18 +89,37 @@ cp env.example .env
 ```
 
 3. **Inicie os serviços:**
+
+#### **✅ Opção A: Inicialização Completa (Mais Lenta)**
 ```bash
-# Desenvolvimento
+# Desenvolvimento - Todos os serviços
 docker-compose -f docker-compose.dev.yml up --build
 
-# Produção
+# Produção - Todos os serviços
 docker-compose up --build
 ```
 
+#### **⚡ Opção B: Inicialização por Partes (Recomendado - Mais Rápido)**
+```bash
+# 1. Iniciar apenas o banco de dados
+docker-compose up -d postgres
+
+# 2. Aguardar o banco estar pronto (cerca de 10 segundos)
+docker logs vur_postgres
+
+# 3. Iniciar o backend
+docker-compose up -d backend
+
+# 4. Verificar se está funcionando
+curl http://localhost:8000/health
+# Resposta esperada: {"status":"healthy","service":"VUR Backend","version":"1.0.0","environment":"development"}
+```
+
 4. **Acesse a aplicação:**
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Docs da API**: http://localhost:8000/docs
+- **Backend API**: http://localhost:8000 ✅ **TESTADO E FUNCIONANDO**
+- **Docs da API**: http://localhost:8000/docs ✅ **TESTADO E FUNCIONANDO**
+- **Health Check**: http://localhost:8000/health ✅ **TESTADO E FUNCIONANDO**
+- **Frontend**: http://localhost:3000 (em desenvolvimento)
 
 ### **Opção 2: Desenvolvimento Local**
 
@@ -211,40 +230,125 @@ black .                      # Formatação de código
 
 ## 🐳 Docker
 
-### **Comandos Docker**
+### **Status Atual - Testado e Funcionando ✅**
 
+- **PostgreSQL**: ✅ Funcionando e saudável
+- **Backend FastAPI**: ✅ Funcionando e saudável
+- **Frontend React**: 🔄 Em desenvolvimento (build lento devido ao tamanho)
+
+### **Comandos Docker Testados**
+
+#### **Inicialização (Recomendado)**
+```bash
+# Método mais rápido - por partes
+docker-compose up -d postgres    # Iniciar banco
+docker-compose up -d backend     # Iniciar API
+
+# Verificar status
+docker ps
+docker logs vur_backend_dev
+docker logs vur_postgres
+
+# Testar API
+curl http://localhost:8000/health
+```
+
+#### **Comandos de Gerenciamento**
+```bash
+# Ver todos os containers
+docker ps
+
+# Parar serviços específicos
+docker-compose stop backend
+docker-compose stop postgres
+
+# Parar todos os serviços
+docker-compose down
+
+# Parar e remover volumes (limpar dados)
+docker-compose down -v
+
+# Reiniciar serviço específico
+docker-compose restart backend
+
+# Ver logs em tempo real
+docker-compose logs -f backend
+docker-compose logs -f postgres
+
+# Executar comandos no container
+docker-compose exec backend bash
+docker-compose exec postgres psql -U vur_user -d vur_db
+```
+
+#### **Desenvolvimento Completo (Mais Lento)**
 ```bash
 # Desenvolvimento com hot reload
 docker-compose -f docker-compose.dev.yml up --build
 
 # Produção
 docker-compose up --build
-
-# Parar serviços
-docker-compose down
-
-# Ver logs
-docker-compose logs -f [service_name]
-
-# Executar comandos no container
-docker-compose exec backend bash
-docker-compose exec frontend sh
 ```
 
 ### **Serviços Disponíveis**
 
-#### **Desenvolvimento:**
-- **Frontend**: http://localhost:3000
-- **Backend**: http://localhost:8000
-- **PostgreSQL**: localhost:5432
-- **Redis**: localhost:6379
-- **Adminer**: http://localhost:8080
-- **Redis Commander**: http://localhost:8081
-- **Mailhog**: http://localhost:8025
+#### **Desenvolvimento (Testado):**
+- **Backend API**: http://localhost:8000 ✅
+- **API Docs**: http://localhost:8000/docs ✅
+- **Health Check**: http://localhost:8000/health ✅
+- **PostgreSQL**: localhost:5432 ✅
+- **Frontend**: http://localhost:3000 (em desenvolvimento)
+- **Redis**: localhost:6379 (opcional)
+- **Adminer**: http://localhost:8080 (opcional)
 
 #### **Produção:**
 - **Application**: http://localhost
 - **API**: http://localhost/api
+
+### **🔧 Troubleshooting**
+
+#### **Problema: Backend não inicia**
+```bash
+# Verificar logs
+docker logs vur_backend_dev
+
+# Problemas comuns:
+# 1. Conflito de porta 8000
+sudo lsof -i :8000  # Linux/Mac
+netstat -ano | findstr :8000  # Windows
+
+# 2. Problema de configuração CORS
+# Verificar arquivo .env e docker-compose.dev.yml
+```
+
+#### **Problema: Banco de dados não conecta**
+```bash
+# Verificar se PostgreSQL está rodando
+docker ps | grep postgres
+
+# Testar conexão
+docker-compose exec postgres psql -U vur_user -d vur_db
+
+# Limpar dados e reiniciar
+docker-compose down -v
+docker-compose up -d postgres
+```
+
+#### **Problema: Build do frontend muito lento**
+```bash
+# O build do frontend pode demorar devido ao tamanho do contexto
+# Solução temporária: usar desenvolvimento local
+cd frontend
+npm install
+npm run dev
+```
+
+#### **Problema: Conflito de rede Docker**
+```bash
+# Limpar redes Docker
+docker network prune -f
+docker-compose down
+docker-compose up -d
+```
 
 ## 📚 API Documentation
 
