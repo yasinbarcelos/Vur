@@ -1,26 +1,50 @@
-import { Bell, User, BarChart3 } from "lucide-react";
+import { Bell, User, BarChart3, LogOut, Settings, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
+import UserProfile from "@/components/auth/UserProfile";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
+  const [showProfile, setShowProfile] = useState(false);
 
   const navigationItems = [
-    // { label: "Dashboard", path: "/dashboard", icon: "📊" },
+    { label: "Dashboard", path: "/dashboard", icon: "📊" },
     { label: "Monitoring", path: "/monitoring", icon: "📈" },
     { label: "Pipeline ML", path: "/pipeline", icon: "🔧" },
     { label: "Gerenciar Dados", path: "/data", icon: "💾" },
   ];
 
   const isActivePath = (path: string) => location.pathname === path;
+
+  const getInitials = (name?: string) => {
+    if (!name) return user?.username?.slice(0, 2).toUpperCase() || 'U';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/auth');
+  };
 
   return (
     <nav className="bg-blue-600 text-white shadow-lg">
@@ -81,19 +105,45 @@ const Navbar = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-white hover:bg-blue-500 p-2"
+                  className="text-white hover:bg-blue-500 p-1 h-auto"
                 >
-                  <User className="w-5 h-5" />
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src={user?.profile_picture} />
+                    <AvatarFallback className="text-xs bg-blue-500 text-white">
+                      {getInitials(user?.full_name)}
+                    </AvatarFallback>
+                  </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => navigate("/profile")}>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {user?.full_name || user?.username}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {user?.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowProfile(true)}>
+                  <User className="mr-2 h-4 w-4" />
                   Meu Perfil
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate("/settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
                   Configurações
                 </DropdownMenuItem>
-                <DropdownMenuItem className="text-red-600">
+                {user?.is_superuser && (
+                  <DropdownMenuItem onClick={() => navigate("/admin")}>
+                    <Shield className="mr-2 h-4 w-4" />
+                    Administração
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                  <LogOut className="mr-2 h-4 w-4" />
                   Sair
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -128,8 +178,18 @@ const Navbar = () => {
           </div>
         </div>
       </div>
+
+      {/* Dialog do perfil do usuário */}
+      <Dialog open={showProfile} onOpenChange={setShowProfile}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Perfil do Usuário</DialogTitle>
+          </DialogHeader>
+          <UserProfile onClose={() => setShowProfile(false)} />
+        </DialogContent>
+      </Dialog>
     </nav>
   );
 };
 
-export default Navbar; 
+export default Navbar;

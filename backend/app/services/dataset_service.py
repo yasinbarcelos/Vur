@@ -7,11 +7,19 @@ import pandas as pd
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import selectinload
 
 from app.models.dataset import Dataset, DatasetStatus, DatasetType
-from app.schemas.dataset import DatasetCreate, DatasetUpdate
+from app.schemas.dataset import (
+    DatasetCreate,
+    DatasetUpdate,
+    DatasetAnalysisResponse,
+    DatasetProcessingResponse,
+    DatasetColumnsResponse,
+    ColumnInfo
+)
+from app.services.data_analysis_service import DataAnalysisService
 from app.core.config import get_settings
 import structlog
 
@@ -325,3 +333,289 @@ class DatasetService:
                 'column_analysis': {},
                 'time_series_info': None
             }
+
+    @staticmethod
+    async def analyze_dataset(
+        db: AsyncSession,
+        dataset_id: int,
+        owner_id: int,
+        sample_size: int = 1000
+    ) -> DatasetAnalysisResponse:
+        """
+        Perform comprehensive analysis of a dataset.
+
+        Args:
+            db: Database session
+            dataset_id: Dataset ID
+            owner_id: Owner user ID (for authorization)
+            sample_size: Sample size for analysis
+
+        Returns:
+            Comprehensive dataset analysis
+        """
+        # Get dataset
+        dataset = await DatasetService.get_dataset_by_id(db, dataset_id)
+        if not dataset or dataset.owner_id != owner_id:
+            raise ValueError("Dataset not found or access denied")
+
+        # Perform analysis
+        analysis_result = DataAnalysisService.analyze_csv_file(
+            dataset.file_path,
+            sample_size
+        )
+
+        # Update dataset with analysis results
+        columns_info = analysis_result['columns_info']
+        time_series_info = analysis_result['time_series_info']
+
+        # Update dataset metadata
+        dataset.columns_info = {
+            'columns': [col['name'] for col in columns_info],
+            'analysis': analysis_result
+        }
+        dataset.row_count = analysis_result['total_rows']
+        dataset.status = DatasetStatus.VALIDATED
+        dataset.updated_at = datetime.utcnow()
+
+        await db.commit()
+        await db.refresh(dataset)
+
+        logger.info("Dataset analysis completed", dataset_id=dataset_id)
+
+        return DatasetAnalysisResponse(
+            dataset_id=dataset_id,
+            **analysis_result
+        )
+
+    @staticmethod
+    async def get_dataset_columns(
+        db: AsyncSession,
+        dataset_id: int,
+        owner_id: int
+    ) -> DatasetColumnsResponse:
+        """
+        Get detailed column information for a dataset.
+
+        Args:
+            db: Database session
+            dataset_id: Dataset ID
+            owner_id: Owner user ID (for authorization)
+
+        Returns:
+            Dataset columns information
+        """
+        # Get dataset
+        dataset = await DatasetService.get_dataset_by_id(db, dataset_id)
+        if not dataset or dataset.owner_id != owner_id:
+            raise ValueError("Dataset not found or access denied")
+
+        # Check if analysis exists
+        if not dataset.columns_info or 'analysis' not in dataset.columns_info:
+            # Perform quick analysis
+            analysis_result = DataAnalysisService.analyze_csv_file(dataset.file_path, 1000)
+            columns_info = analysis_result['columns_info']
+            time_series_info = analysis_result['time_series_info']
+        else:
+            # Use existing analysis
+            analysis_data = dataset.columns_info['analysis']
+            columns_info = analysis_data['columns_info']
+            time_series_info = analysis_data['time_series_info']
+
+        # Convert to ColumnInfo objects
+        columns = [ColumnInfo(**col) for col in columns_info]
+
+        # Categorize columns
+        numeric_columns = [col.name for col in columns if col.is_numeric]
+        categorical_columns = [col.name for col in columns if not col.is_numeric and not col.is_potential_date]
+        date_columns = [col.name for col in columns if col.is_potential_date]
+
+        # Suggestions
+        suggested_date_column = time_series_info['date_column'] if time_series_info else None
+        suggested_target_columns = [col.name for col in columns if col.is_potential_target]
+
+        return DatasetColumnsResponse(
+            dataset_id=dataset_id,
+            columns=columns,
+            suggested_date_column=suggested_date_column,
+            suggested_target_columns=suggested_target_columns,
+            numeric_columns=numeric_columns,
+            categorical_columns=categorical_columns,
+            date_columns=date_columns
+        )
+
+    @staticmethod
+    async def process_and_save_dataset(
+        db: AsyncSession,
+        dataset_id: int,
+        owner_id: int,
+        chunk_size: int = 10000
+    ) -> DatasetProcessingResponse:
+        """
+        Process CSV data and save to database for faster access.
+
+        Args:
+            db: Database session
+            dataset_id: Dataset ID
+            owner_id: Owner user ID (for authorization)
+            chunk_size: Chunk size for processing large files
+
+        Returns:
+            Processing results
+        """
+        start_time = datetime.utcnow()
+
+        # Get dataset
+        dataset = await DatasetService.get_dataset_by_id(db, dataset_id)
+        if not dataset or dataset.owner_id != owner_id:
+            raise ValueError("Dataset not found or access denied")
+
+        errors = []
+        warnings = []
+
+        try:
+            # Read CSV file
+            df = pd.read_csv(dataset.file_path)
+
+            if df.empty:
+                raise ValueError("Dataset is empty")
+
+            # Create table name
+            table_name = f"dataset_{dataset_id}_data"
+
+            # Clean column names for database
+            df.columns = [col.strip().replace(' ', '_').replace('-', '_').lower() for col in df.columns]
+
+            # Process data in chunks for large datasets
+            total_rows = len(df)
+            rows_processed = 0
+
+            # Create table and insert data
+            # Note: This is a simplified approach. In production, you might want to use
+            # a more sophisticated approach with proper data types and constraints
+
+            # Drop table if exists
+            await db.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+
+            # Create table dynamically based on DataFrame structure
+            create_table_sql = DatasetService._generate_create_table_sql(df, table_name)
+            await db.execute(text(create_table_sql))
+
+            # Insert data in chunks
+            for chunk_start in range(0, total_rows, chunk_size):
+                chunk_end = min(chunk_start + chunk_size, total_rows)
+                chunk_df = df.iloc[chunk_start:chunk_end]
+
+                # Convert DataFrame to SQL insert
+                insert_sql, values = DatasetService._generate_insert_sql(chunk_df, table_name)
+
+                try:
+                    await db.execute(text(insert_sql), values)
+                    rows_processed += len(chunk_df)
+
+                    logger.info(
+                        "Processed chunk",
+                        dataset_id=dataset_id,
+                        chunk_start=chunk_start,
+                        chunk_end=chunk_end,
+                        rows_processed=rows_processed
+                    )
+
+                except Exception as e:
+                    error_msg = f"Failed to insert chunk {chunk_start}-{chunk_end}: {str(e)}"
+                    errors.append(error_msg)
+                    logger.error("Chunk processing failed", error=error_msg)
+
+            await db.commit()
+
+            # Update dataset metadata
+            dataset.dataset_metadata = {
+                'database_table': table_name,
+                'processed_at': datetime.utcnow().isoformat(),
+                'rows_in_db': rows_processed,
+                'columns_in_db': len(df.columns)
+            }
+            dataset.status = DatasetStatus.VALIDATED
+            dataset.updated_at = datetime.utcnow()
+
+            await db.commit()
+            await db.refresh(dataset)
+
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+
+            logger.info(
+                "Dataset processing completed",
+                dataset_id=dataset_id,
+                table_name=table_name,
+                rows_processed=rows_processed,
+                processing_time=processing_time
+            )
+
+            return DatasetProcessingResponse(
+                dataset_id=dataset_id,
+                processing_status="completed",
+                rows_processed=rows_processed,
+                columns_processed=len(df.columns),
+                processing_time_seconds=processing_time,
+                database_table_name=table_name,
+                errors=errors,
+                warnings=warnings
+            )
+
+        except Exception as e:
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            error_msg = f"Dataset processing failed: {str(e)}"
+            errors.append(error_msg)
+
+            logger.error("Dataset processing failed", dataset_id=dataset_id, error=str(e))
+
+            return DatasetProcessingResponse(
+                dataset_id=dataset_id,
+                processing_status="failed",
+                rows_processed=0,
+                columns_processed=0,
+                processing_time_seconds=processing_time,
+                database_table_name=None,
+                errors=errors,
+                warnings=warnings
+            )
+
+    @staticmethod
+    def _generate_create_table_sql(df: pd.DataFrame, table_name: str) -> str:
+        """Generate CREATE TABLE SQL from DataFrame."""
+        columns_sql = []
+
+        for col in df.columns:
+            # Determine SQL data type based on pandas dtype
+            dtype = df[col].dtype
+
+            if pd.api.types.is_integer_dtype(dtype):
+                sql_type = "INTEGER"
+            elif pd.api.types.is_float_dtype(dtype):
+                sql_type = "REAL"
+            elif pd.api.types.is_datetime64_any_dtype(dtype):
+                sql_type = "TIMESTAMP"
+            else:
+                sql_type = "TEXT"
+
+            columns_sql.append(f"{col} {sql_type}")
+
+        return f"CREATE TABLE {table_name} ({', '.join(columns_sql)})"
+
+    @staticmethod
+    def _generate_insert_sql(df: pd.DataFrame, table_name: str) -> Tuple[str, List[Dict]]:
+        """Generate INSERT SQL and values from DataFrame."""
+        columns = list(df.columns)
+        placeholders = ', '.join([f":{col}" for col in columns])
+
+        insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+
+        # Convert DataFrame to list of dictionaries
+        values = df.to_dict('records')
+
+        # Handle NaN values
+        for row in values:
+            for key, value in row.items():
+                if pd.isna(value):
+                    row[key] = None
+
+        return insert_sql, values

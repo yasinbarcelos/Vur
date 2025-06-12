@@ -4,7 +4,16 @@ Pydantic schemas for API validation
 
 from .user import UserCreate, UserUpdate, UserResponse, UserLogin, Token
 from .pipeline import PipelineCreate, PipelineUpdate, PipelineResponse
-from .dataset import DatasetCreate, DatasetUpdate, DatasetResponse
+from .dataset import (
+    DatasetCreate,
+    DatasetUpdate,
+    DatasetResponse,
+    DatasetAnalysisResponse,
+    DatasetProcessingResponse,
+    DatasetColumnsResponse,
+    DatasetPreviewResponse,
+    DatasetValidationResponse
+)
 from .model import ModelCreate, ModelUpdate, ModelResponse
 from .prediction import (
     PredictionCreate,
@@ -40,6 +49,11 @@ __all__ = [
     "DatasetCreate",
     "DatasetUpdate",
     "DatasetResponse",
+    "DatasetAnalysisResponse",
+    "DatasetProcessingResponse",
+    "DatasetColumnsResponse",
+    "DatasetPreviewResponse",
+    "DatasetValidationResponse",
 
     # Model schemas
     "ModelCreate",

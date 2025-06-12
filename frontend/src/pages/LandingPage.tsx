@@ -2,10 +2,12 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Building2, Activity, TrendingUp, Brain, BarChart3 } from 'lucide-react';
+import { Building2, Activity, TrendingUp, Brain, BarChart3, LogIn } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -24,15 +26,38 @@ const LandingPage = () => {
             Solução completa para modelagem, treinamento e monitoramento de modelos de séries temporais com IA avançada
           </p>
           
-          {/* Dashboard Access Button */}
-          <Button 
-            onClick={() => navigate('/dashboard')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg mb-8"
-            size="lg"
-          >
-            <BarChart3 className="h-5 w-5 mr-2" />
-            Acessar Dashboard
-          </Button>
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
+            {isAuthenticated ? (
+              <Button
+                onClick={() => navigate('/dashboard')}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg"
+                size="lg"
+              >
+                <BarChart3 className="h-5 w-5 mr-2" />
+                Acessar Dashboard
+              </Button>
+            ) : (
+              <>
+                <Button
+                  onClick={() => navigate('/auth')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg"
+                  size="lg"
+                >
+                  <LogIn className="h-5 w-5 mr-2" />
+                  Fazer Login
+                </Button>
+                <Button
+                  onClick={() => navigate('/auth')}
+                  variant="outline"
+                  className="border-blue-600 text-blue-600 hover:bg-blue-50 px-8 py-3 text-lg"
+                  size="lg"
+                >
+                  Criar Conta
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Main Action Cards */}

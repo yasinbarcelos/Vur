@@ -16,7 +16,12 @@ from app.schemas.dataset import (
     DatasetListResponse,
     DatasetUploadResponse,
     DatasetPreviewResponse,
-    DatasetValidationResponse
+    DatasetValidationResponse,
+    DatasetAnalysisRequest,
+    DatasetAnalysisResponse,
+    DatasetProcessingRequest,
+    DatasetProcessingResponse,
+    DatasetColumnsResponse
 )
 from app.services.dataset_service import DatasetService
 from app.services.auth_service import AuthService
@@ -258,3 +263,135 @@ async def validate_dataset(
 
     validation_results = DatasetService.validate_dataset(dataset.file_path)
     return DatasetValidationResponse(**validation_results)
+
+
+@router.post("/{dataset_id}/analyze", response_model=DatasetAnalysisResponse)
+async def analyze_dataset(
+    dataset_id: int,
+    sample_size: int = Query(1000, ge=100, le=10000, description="Sample size for analysis"),
+    current_user: User = Depends(AuthService.get_current_active_user),
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Perform comprehensive analysis of a dataset.
+
+    Args:
+        dataset_id: Dataset ID
+        sample_size: Number of rows to sample for analysis
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Comprehensive dataset analysis results
+
+    Raises:
+        HTTPException: If dataset not found or access denied
+    """
+    try:
+        analysis_result = await DatasetService.analyze_dataset(
+            db, dataset_id, current_user.id, sample_size
+        )
+
+        logger.info("Dataset analysis completed", dataset_id=dataset_id, user_id=current_user.id)
+        return analysis_result
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error("Dataset analysis failed", dataset_id=dataset_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to analyze dataset"
+        )
+
+
+@router.get("/{dataset_id}/columns", response_model=DatasetColumnsResponse)
+async def get_dataset_columns(
+    dataset_id: int,
+    current_user: User = Depends(AuthService.get_current_active_user),
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Get detailed column information for a dataset.
+
+    Args:
+        dataset_id: Dataset ID
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Dataset columns information with suggestions
+
+    Raises:
+        HTTPException: If dataset not found or access denied
+    """
+    try:
+        columns_info = await DatasetService.get_dataset_columns(
+            db, dataset_id, current_user.id
+        )
+
+        logger.info("Dataset columns retrieved", dataset_id=dataset_id, user_id=current_user.id)
+        return columns_info
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error("Failed to get dataset columns", dataset_id=dataset_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve dataset columns"
+        )
+
+
+@router.post("/{dataset_id}/process", response_model=DatasetProcessingResponse)
+async def process_dataset(
+    dataset_id: int,
+    chunk_size: int = Query(10000, ge=1000, le=100000, description="Chunk size for processing"),
+    current_user: User = Depends(AuthService.get_current_active_user),
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Process CSV data and save to database for faster access.
+
+    Args:
+        dataset_id: Dataset ID
+        chunk_size: Chunk size for processing large files
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Processing results
+
+    Raises:
+        HTTPException: If dataset not found or access denied
+    """
+    try:
+        processing_result = await DatasetService.process_and_save_dataset(
+            db, dataset_id, current_user.id, chunk_size
+        )
+
+        logger.info(
+            "Dataset processing completed",
+            dataset_id=dataset_id,
+            user_id=current_user.id,
+            status=processing_result.processing_status
+        )
+        return processing_result
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error("Dataset processing failed", dataset_id=dataset_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process dataset"
+        )
