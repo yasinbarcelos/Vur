@@ -20,6 +20,11 @@ if settings.DATABASE_URL.startswith("postgresql://"):
     ASYNC_DATABASE_URL = settings.DATABASE_URL.replace(
         "postgresql://", "postgresql+asyncpg://", 1
     )
+elif settings.DATABASE_URL.startswith("sqlite://"):
+    # Use aiosqlite for async SQLite operations
+    ASYNC_DATABASE_URL = settings.DATABASE_URL.replace(
+        "sqlite://", "sqlite+aiosqlite://", 1
+    )
 else:
     ASYNC_DATABASE_URL = settings.DATABASE_URL
 

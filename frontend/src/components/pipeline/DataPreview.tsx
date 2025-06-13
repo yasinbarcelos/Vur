@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,14 +10,17 @@ import {
   AlertTriangle, 
   Info,
   RefreshCw,
-  ArrowRight,
   Database,
   Calendar,
   Target,
-  Check
+  Check,
+  Activity,
+  Loader2
 } from 'lucide-react';
 import { usePipeline } from '@/contexts/PipelineContext';
 import { useToast } from '@/hooks/use-toast';
+import { getDatasetPreview } from '@/lib/api';
+import { DatasetPreview } from '@/types/dataset';
 import DataStatistics from './DataStatistics';
 import DataVisualization from './DataVisualization';
 
@@ -38,6 +41,45 @@ interface DataQualityReport {
 const DataPreview = () => {
   const { pipelineData, updatePipelineData, completeStep, goToStep } = usePipeline();
   const { toast } = useToast();
+  
+  // Estados para carregamento de dados da API
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [apiData, setApiData] = useState<DatasetPreview | null>(null);
+
+  // Carregar dados da API quando há datasetId mas não há dados locais
+  useEffect(() => {
+    const loadDataFromAPI = async () => {
+      if (pipelineData.datasetId && (!pipelineData.data || pipelineData.data.length === 0)) {
+        setIsLoadingData(true);
+        try {
+          const preview = await getDatasetPreview(pipelineData.datasetId, 100);
+          setApiData(preview);
+          
+          // Atualizar dados do pipeline com dados da API
+          updatePipelineData({
+            data: preview.data,
+            columns: preview.columns,
+            totalRows: preview.total_rows
+          });
+          
+          toast({
+            title: "Dados carregados",
+            description: `${preview.columns.length} colunas e ${preview.total_rows} registros carregados da API`,
+          });
+        } catch (error) {
+          toast({
+            title: "Erro ao carregar dados",
+            description: error instanceof Error ? error.message : "Erro desconhecido",
+            variant: "destructive"
+          });
+        } finally {
+          setIsLoadingData(false);
+        }
+      }
+    };
+
+    loadDataFromAPI();
+  }, [pipelineData.datasetId, pipelineData.data, updatePipelineData, toast]);
 
   // Função para detectar tipo de dados
   const detectDataType = (values: any[]): string => {
@@ -102,26 +144,29 @@ const DataPreview = () => {
 
   // Calcular relatório de qualidade dos dados
   const dataQuality = useMemo((): DataQualityReport | null => {
-    if (!pipelineData.data || !pipelineData.columns) return null;
+    const currentData = pipelineData.data || apiData?.data;
+    const currentColumns = pipelineData.columns || apiData?.columns;
+    
+    if (!currentData || !currentColumns) return null;
 
     const missingValues: { [key: string]: number } = {};
     const dataTypes: { [key: string]: string } = {};
     
     // Analisar cada coluna
-    pipelineData.columns.forEach(header => {
-      const values = pipelineData.data!.map(row => row[header]);
+    currentColumns.forEach(header => {
+      const values = currentData.map(row => row[header]);
       const missing = values.filter(v => v === null || v === undefined || v === '').length;
       missingValues[header] = missing;
       dataTypes[header] = detectDataType(values);
     });
 
     // Detectar linhas duplicadas
-    const duplicateRows = pipelineData.data.length - new Set(pipelineData.data.map(row => JSON.stringify(row))).size;
+    const duplicateRows = currentData.length - new Set(currentData.map(row => JSON.stringify(row))).size;
 
-    const suggestions = detectColumns(pipelineData.data, pipelineData.columns);
+    const suggestions = detectColumns(currentData, currentColumns);
 
     // Adicionar validações
-    if (pipelineData.data.length < 50) {
+    if (currentData.length < 50) {
       suggestions.issues.push('Dataset muito pequeno (< 50 registros)');
     }
     
@@ -130,7 +175,7 @@ const DataPreview = () => {
     }
 
     const highMissingCols = Object.entries(missingValues)
-      .filter(([_, count]) => count / pipelineData.data!.length > 0.3)
+      .filter(([_, count]) => count / currentData.length > 0.3)
       .map(([col, _]) => col);
     
     if (highMissingCols.length > 0) {
@@ -138,14 +183,14 @@ const DataPreview = () => {
     }
 
     return {
-      totalRows: pipelineData.data.length,
-      totalColumns: pipelineData.columns.length,
+      totalRows: pipelineData.totalRows || apiData?.total_rows || currentData.length,
+      totalColumns: currentColumns.length,
       missingValues,
       duplicateRows,
       dataTypes,
       suggestions
     };
-  }, [pipelineData.data, pipelineData.columns]);
+  }, [pipelineData.data, pipelineData.columns, pipelineData.totalRows, apiData]);
 
   const handleNewUpload = () => {
     goToStep('upload');
@@ -180,8 +225,27 @@ const DataPreview = () => {
     return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-700';
   };
 
+  // Dados atuais (do pipeline ou da API)
+  const currentData = pipelineData.data || apiData?.data;
+  const currentColumns = pipelineData.columns || apiData?.columns;
+
+  // Se está carregando dados da API
+  if (isLoadingData) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-gray-400" />
+          <h2 className="text-xl font-semibold mt-4">Carregando dados...</h2>
+          <p className="text-muted-foreground mt-2">
+            Obtendo dados do dataset da API
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Se não há dados, redirecionar para upload
-  if (!pipelineData.data || pipelineData.data.length === 0) {
+  if (!currentData || currentData.length === 0) {
     return (
       <div className="space-y-6">
         <Alert>
@@ -198,7 +262,7 @@ const DataPreview = () => {
     );
   }
 
-  const previewData = pipelineData.data.slice(0, 5);
+  const previewData = currentData.slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -245,7 +309,7 @@ const DataPreview = () => {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-3 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{dataQuality.totalRows}</div>
+                <div className="text-2xl font-bold text-blue-600">{dataQuality.totalRows.toLocaleString()}</div>
                 <div className="text-sm text-blue-700">Registros</div>
               </div>
               <div className="text-center p-3 bg-green-50 rounded-lg">
@@ -299,11 +363,11 @@ const DataPreview = () => {
             <Database className="w-5 h-5" />
             Preview dos Dados
             <Badge variant="outline">
-              {pipelineData.file?.name || 'Dados Carregados'}
+              {pipelineData.datasetName || 'Dados Carregados'}
             </Badge>
           </CardTitle>
           <CardDescription>
-            Primeiras 5 linhas do seu dataset ({pipelineData.data.length.toLocaleString()} registros totais)
+            Primeiras 10 linhas do seu dataset ({dataQuality?.totalRows.toLocaleString() || currentData.length.toLocaleString()} registros totais)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -311,7 +375,7 @@ const DataPreview = () => {
             <table className="w-full border-collapse border border-gray-200">
               <thead>
                 <tr className="bg-gray-50">
-                  {pipelineData.columns!.map((column) => (
+                  {currentColumns!.map((column) => (
                     <th key={column} className="border border-gray-200 p-2 text-left text-sm font-medium">
                       {column}
                       {dataQuality && (
@@ -329,7 +393,7 @@ const DataPreview = () => {
               <tbody>
                 {previewData.map((row, index) => (
                   <tr key={index} className="hover:bg-gray-50">
-                    {pipelineData.columns!.map((column) => (
+                    {currentColumns!.map((column) => (
                       <td key={column} className="border border-gray-200 p-2 text-sm">
                         {row[column]}
                       </td>
@@ -366,7 +430,7 @@ const DataPreview = () => {
                 className="w-full p-2 border border-gray-300 rounded-md"
               >
                 <option value="">Selecionar coluna de data</option>
-                {pipelineData.columns!.map((column) => (
+                {currentColumns!.map((column) => (
                   <option key={column} value={column}>
                     {column}
                     {dataQuality?.dataTypes[column] === 'date' && ' (Data)'}
@@ -391,7 +455,7 @@ const DataPreview = () => {
                 className="w-full p-2 border border-gray-300 rounded-md"
               >
                 <option value="">Selecionar coluna alvo</option>
-                {pipelineData.columns!.filter(col => col !== pipelineData.dateColumn).map((column) => (
+                {currentColumns!.filter(col => col !== pipelineData.dateColumn).map((column) => (
                   <option key={column} value={column}>
                     {column}
                     {(dataQuality?.dataTypes[column] === 'float' || dataQuality?.dataTypes[column] === 'integer') && ' (Numérica)'}
@@ -418,16 +482,16 @@ const DataPreview = () => {
       </Card>
 
       {/* Estatísticas e Visualização */}
-      {pipelineData.data.length > 0 && pipelineData.dateColumn && pipelineData.targetColumn && (
+      {currentData.length > 0 && pipelineData.dateColumn && pipelineData.targetColumn && (
         <>
           <DataStatistics 
-            data={pipelineData.data} 
-            columns={pipelineData.columns!}
+            data={currentData} 
+            columns={currentColumns!}
             targetColumn={pipelineData.targetColumn} 
           />
           <DataVisualization 
-            data={pipelineData.data} 
-            columns={pipelineData.columns!}
+            data={currentData} 
+            columns={currentColumns!}
             dateColumn={pipelineData.dateColumn} 
             targetColumn={pipelineData.targetColumn} 
           />

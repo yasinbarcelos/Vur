@@ -174,3 +174,168 @@ class DatasetColumnsResponse(BaseModel):
     numeric_columns: List[str]
     categorical_columns: List[str]
     date_columns: List[str]
+
+
+# ===== NEW SCHEMAS FOR TIME SERIES ANALYSIS =====
+
+class TimeSeriesAnalysisRequest(BaseModel):
+    """Schema for time series analysis request."""
+    dataset_id: int
+    target_column: str = Field(..., description="Target column for analysis")
+    date_column: Optional[str] = Field(None, description="Date column for time series")
+    max_lags: int = Field(50, ge=1, le=200, description="Maximum lags for ACF/PACF")
+    sample_size: Optional[int] = Field(None, description="Sample size for analysis (None = full dataset)")
+
+
+class AutocorrelationResponse(BaseModel):
+    """Schema for autocorrelation analysis response."""
+    lags: List[int]
+    acf_values: List[float]
+    confidence_intervals: List[List[float]]  # [lower, upper] for each lag
+    significant_lags: List[int]
+    ljung_box_statistic: Optional[float]
+    ljung_box_p_value: Optional[float]
+
+
+class PartialAutocorrelationResponse(BaseModel):
+    """Schema for partial autocorrelation analysis response."""
+    lags: List[int]
+    pacf_values: List[float]
+    confidence_intervals: List[List[float]]  # [lower, upper] for each lag
+    significant_lags: List[int]
+
+
+class MutualInformationResponse(BaseModel):
+    """Schema for mutual information analysis response."""
+    lags: List[int]
+    mi_values: List[float]
+    optimal_lag: Optional[int]
+    mi_threshold: float
+
+
+class HurstExponentResponse(BaseModel):
+    """Schema for Hurst exponent analysis response."""
+    hurst_exponent: float
+    scales: List[int]
+    rs_values: List[float]
+    regression_slope: float
+    regression_intercept: float
+    r_squared: float
+    interpretation: str  # "trending", "random_walk", "mean_reverting"
+
+
+class StationarityTestResponse(BaseModel):
+    """Schema for stationarity tests response."""
+    adf_statistic: float
+    adf_p_value: float
+    adf_critical_values: Dict[str, float]
+    adf_is_stationary: bool
+    kpss_statistic: Optional[float]
+    kpss_p_value: Optional[float]
+    kpss_critical_values: Optional[Dict[str, float]]
+    kpss_is_stationary: Optional[bool]
+    pp_statistic: Optional[float]
+    pp_p_value: Optional[float]
+    pp_is_stationary: Optional[bool]
+
+
+class SeasonalityAnalysisResponse(BaseModel):
+    """Schema for seasonality analysis response."""
+    seasonal_periods: List[int]
+    seasonal_strengths: List[float]
+    dominant_period: Optional[int]
+    seasonal_decomposition: Optional[Dict[str, List[float]]]  # trend, seasonal, residual
+    fourier_peaks: List[Dict[str, float]]  # frequency and magnitude
+
+
+class DataQualityResponse(BaseModel):
+    """Schema for comprehensive data quality analysis."""
+    total_rows: int
+    total_columns: int
+    missing_values: Dict[str, int]
+    missing_percentages: Dict[str, float]
+    duplicate_rows: int
+    data_types: Dict[str, str]
+    numeric_columns: List[str]
+    categorical_columns: List[str]
+    date_columns: List[str]
+    outliers_count: Dict[str, int]
+    completeness_score: float
+    consistency_score: float
+    overall_quality_score: float
+    recommendations: List[str]
+    issues: List[str]
+
+
+class ColumnStatisticsResponse(BaseModel):
+    """Schema for detailed column statistics."""
+    column: str
+    data_type: str
+    count: int
+    null_count: int
+    null_percentage: float
+    unique_count: int
+    unique_percentage: float
+    mean: Optional[float]
+    median: Optional[float]
+    std: Optional[float]
+    min: Optional[float]
+    max: Optional[float]
+    q25: Optional[float]
+    q75: Optional[float]
+    skewness: Optional[float]
+    kurtosis: Optional[float]
+    mode: Optional[str]
+    most_frequent_values: List[Dict[str, Any]]
+    outliers_count: Optional[int]
+    outliers_percentage: Optional[float]
+
+
+class DatasetStatisticsResponse(BaseModel):
+    """Schema for complete dataset statistics."""
+    dataset_id: int
+    total_rows: int
+    total_columns: int
+    memory_usage_mb: float
+    columns_statistics: List[ColumnStatisticsResponse]
+    correlations: Optional[Dict[str, Dict[str, float]]]
+    general_stats: Dict[str, Any]
+    analysis_timestamp: datetime
+
+
+class TimeSeriesCompleteAnalysisResponse(BaseModel):
+    """Schema for complete time series analysis response."""
+    dataset_id: int
+    target_column: str
+    date_column: Optional[str]
+    data_quality: DataQualityResponse
+    statistics: DatasetStatisticsResponse
+    autocorrelation: AutocorrelationResponse
+    partial_autocorrelation: PartialAutocorrelationResponse
+    mutual_information: MutualInformationResponse
+    hurst_exponent: HurstExponentResponse
+    stationarity_tests: StationarityTestResponse
+    seasonality_analysis: SeasonalityAnalysisResponse
+    analysis_timestamp: datetime
+    computation_time_seconds: float
+
+
+class DataVisualizationRequest(BaseModel):
+    """Schema for data visualization request."""
+    dataset_id: int
+    target_column: str
+    date_column: Optional[str] = None
+    chart_type: str = Field(..., description="Type of chart: 'timeseries', 'histogram', 'boxplot', 'scatter'")
+    sample_size: Optional[int] = Field(1000, description="Sample size for visualization")
+    additional_columns: Optional[List[str]] = Field(None, description="Additional columns for multi-variate plots")
+
+
+class DataVisualizationResponse(BaseModel):
+    """Schema for data visualization response."""
+    dataset_id: int
+    chart_type: str
+    chart_data: Dict[str, Any]  # Plotly-compatible data structure
+    chart_layout: Dict[str, Any]  # Plotly-compatible layout
+    sample_size: int
+    total_rows: int
+    metadata: Dict[str, Any]

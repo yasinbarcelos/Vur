@@ -28,8 +28,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Se não requer autenticação mas está autenticado (ex: página de login)
   if (!requireAuth && isAuthenticated) {
-    // Redirecionar para onde estava tentando ir ou dashboard
-    const from = location.state?.from?.pathname || '/dashboard';
+    // Redirecionar para onde estava tentando ir ou pipeline
+    const from = location.state?.from?.pathname || '/pipeline';
     return <Navigate to={from} replace />;
   }
 

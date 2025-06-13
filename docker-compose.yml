@@ -1,162 +1,26 @@
 version: '3.8'
 
 services:
-  # Banco de dados PostgreSQL
-  postgres:
-    image: postgres:15-alpine
-    container_name: vur_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-vur_db}
-      POSTGRES_USER: ${POSTGRES_USER:-vur_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vur_password}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    networks:
-      - vur_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vur_user} -d ${POSTGRES_DB:-vur_db}"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  # Backend FastAPI
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: vur_backend
-    restart: unless-stopped
-    environment:
-      # Database
-      DATABASE_URL: postgresql://${POSTGRES_USER:-vur_user}:${POSTGRES_PASSWORD:-vur_password}@postgres:5432/${POSTGRES_DB:-vur_db}
-      
-      # JWT
-      SECRET_KEY: ${SECRET_KEY:-your-super-secret-key-change-in-production}
-      ALGORITHM: ${ALGORITHM:-HS256}
-      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      
-      # Environment
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DEBUG: ${DEBUG:-true}
-      
-      # CORS
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
-      
-      # File uploads
-      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10485760}  # 10MB
-      UPLOAD_DIR: /app/uploads
-      
-      # ML Models
-      MODELS_DIR: /app/models
-      
-      # Logging
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    volumes:
-      - backend_uploads:/app/uploads
-      - backend_models:/app/models
-      - backend_logs:/app/logs
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
-    networks:
-      - vur_network
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/models:/app/models
+      - ./backend/logs:/app/logs
+      - ./backend/vur_dev.db:/app/vur_dev.db
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=sqlite:///./vur_dev.db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 5
-
-  # Frontend React
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: vur_frontend
-    restart: unless-stopped
-    environment:
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000/api/v1}
-      - VITE_APP_NAME=${VITE_APP_NAME:-VUR - Time Series Forecasting}
-      - VITE_ENVIRONMENT=${ENVIRONMENT:-development}
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
-    networks:
-      - vur_network
-    depends_on:
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  # Redis para cache (opcional)
-  redis:
-    image: redis:7-alpine
-    container_name: vur_redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password}
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-redis_password}
-    volumes:
-      - redis_data:/data
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    networks:
-      - vur_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  # Nginx Proxy (para produção)
-  nginx:
-    image: nginx:alpine
-    container_name: vur_nginx
-    restart: unless-stopped
-    ports:
-      - "${NGINX_PORT:-80}:80"
-      - "${NGINX_SSL_PORT:-443}:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - nginx_logs:/var/log/nginx
-    networks:
-      - vur_network
-    depends_on:
-      - frontend
-      - backend
-    profiles:
-      - production
-
-# Volumes persistentes
-volumes:
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-  backend_uploads:
-    driver: local
-  backend_models:
-    driver: local
-  backend_logs:
-    driver: local
-  nginx_logs:
-    driver: local
-
-# Rede customizada
-networks:
-  vur_network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16 
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped 

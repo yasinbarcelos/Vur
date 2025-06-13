@@ -28,9 +28,8 @@ const Navbar = () => {
   const [showProfile, setShowProfile] = useState(false);
 
   const navigationItems = [
-    { label: "Dashboard", path: "/dashboard", icon: "📊" },
+    { label: "Pipeline", path: "/pipeline", icon: "🚀" },
     { label: "Monitoring", path: "/monitoring", icon: "📈" },
-    { label: "Pipeline ML", path: "/pipeline", icon: "🔧" },
     { label: "Gerenciar Dados", path: "/data", icon: "💾" },
   ];
 
@@ -56,8 +55,8 @@ const Navbar = () => {
               <BarChart3 className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-xl font-bold">TimeSeries Monitor</h1>
-              <p className="text-xs text-blue-200">Plataforma de Análise Preditiva</p>
+              <h1 className="text-xl font-bold">VUR Platform</h1>
+              <p className="text-xs text-blue-200">Plataforma de Séries Temporais</p>
             </div>
           </div>
 

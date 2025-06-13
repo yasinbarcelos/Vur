@@ -1,363 +1,519 @@
 """
-Data Analysis Service for CSV processing and analysis
+Data Analysis Service
+Handles data quality analysis and comprehensive statistics
 """
 
-import os
-import pandas as pd
 import numpy as np
-from typing import Dict, List, Any, Optional, Tuple
+import pandas as pd
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
-import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import warnings
+warnings.filterwarnings('ignore')
 
-from app.schemas.dataset import (
-    ColumnInfo, 
-    TimeSeriesInfo, 
-    DatasetAnalysisResponse,
-    DatasetProcessingResponse
-)
+from scipy import stats
+import structlog
 
 logger = structlog.get_logger(__name__)
 
 
 class DataAnalysisService:
-    """Service for analyzing and processing CSV datasets."""
+    """Service for data quality analysis and statistics."""
+    
+    def __init__(self):
+        self.executor = ThreadPoolExecutor(max_workers=4)
     
     @staticmethod
-    def analyze_csv_file(file_path: str, sample_size: int = 1000) -> Dict[str, Any]:
+    def detect_data_type(series: pd.Series) -> str:
         """
-        Analyze a CSV file and extract comprehensive information.
+        Detect the data type of a pandas series.
         
         Args:
-            file_path: Path to the CSV file
-            sample_size: Number of rows to sample for analysis
+            series: Pandas series to analyze
             
         Returns:
-            Dictionary with analysis results
+            String representing the detected data type
         """
         try:
-            # Read the file with error handling
-            df = DataAnalysisService._read_csv_safely(file_path)
+            # Remove null values for analysis
+            clean_series = series.dropna()
             
-            if df is None or df.empty:
-                raise ValueError("Could not read CSV file or file is empty")
+            if len(clean_series) == 0:
+                return "empty"
             
-            # Sample data for analysis if dataset is large
-            if len(df) > sample_size:
-                analysis_df = df.sample(n=sample_size, random_state=42)
-            else:
-                analysis_df = df.copy()
+            # Sample for performance
+            sample_size = min(1000, len(clean_series))
+            sample = clean_series.sample(n=sample_size, random_state=42)
             
-            # Basic information
-            total_rows = len(df)
-            total_columns = len(df.columns)
-            memory_usage = df.memory_usage(deep=True).sum() / (1024 * 1024)  # MB
+            # Check if numeric
+            try:
+                pd.to_numeric(sample, errors='raise')
+                # Check if integer or float
+                if sample.dtype in ['int64', 'int32', 'int16', 'int8']:
+                    return "integer"
+                else:
+                    return "float"
+            except (ValueError, TypeError):
+                pass
             
-            # Analyze columns
-            columns_info = DataAnalysisService._analyze_columns(analysis_df, df)
+            # Check if datetime
+            try:
+                pd.to_datetime(sample, errors='raise')
+                return "datetime"
+            except (ValueError, TypeError):
+                pass
             
-            # Detect time series information
-            time_series_info = DataAnalysisService._detect_time_series(df, columns_info)
+            # Check if boolean
+            if sample.dtype == 'bool':
+                return "boolean"
             
-            # Calculate data quality score
-            quality_score = DataAnalysisService._calculate_quality_score(columns_info, total_rows)
+            # Check if categorical (low cardinality)
+            unique_ratio = len(sample.unique()) / len(sample)
+            if unique_ratio < 0.1 and len(sample.unique()) < 50:
+                return "categorical"
             
-            # Generate recommendations
-            recommendations = DataAnalysisService._generate_recommendations(
-                columns_info, time_series_info, total_rows
-            )
-            
-            # Generate warnings and errors
-            warnings, errors = DataAnalysisService._generate_warnings_errors(
-                columns_info, time_series_info, total_rows
-            )
-            
-            return {
-                'total_rows': total_rows,
-                'total_columns': total_columns,
-                'memory_usage_mb': round(memory_usage, 2),
-                'columns_info': columns_info,
-                'time_series_info': time_series_info,
-                'data_quality_score': quality_score,
-                'recommendations': recommendations,
-                'warnings': warnings,
-                'errors': errors,
-                'analysis_timestamp': datetime.utcnow()
-            }
+            return "text"
             
         except Exception as e:
-            logger.error("Failed to analyze CSV file", file_path=file_path, error=str(e))
-            raise ValueError(f"Failed to analyze CSV file: {str(e)}")
+            logger.warning("Error detecting data type", error=str(e))
+            return "unknown"
     
     @staticmethod
-    def _read_csv_safely(file_path: str) -> Optional[pd.DataFrame]:
-        """Safely read CSV file with multiple encoding attempts."""
-        encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
-        separators = [',', ';', '\t', '|']
+    def calculate_column_statistics(series: pd.Series, column_name: str) -> Dict[str, Any]:
+        """
+        Calculate comprehensive statistics for a single column.
         
-        for encoding in encodings:
-            for sep in separators:
-                try:
-                    df = pd.read_csv(file_path, encoding=encoding, sep=sep, low_memory=False)
-                    if len(df.columns) > 1:  # Valid CSV should have multiple columns
-                        logger.info(
-                            "Successfully read CSV", 
-                            encoding=encoding, 
-                            separator=sep,
-                            shape=df.shape
-                        )
-                        return df
-                except Exception:
-                    continue
-        
-        logger.error("Failed to read CSV with any encoding/separator combination")
-        return None
-    
-    @staticmethod
-    def _analyze_columns(analysis_df: pd.DataFrame, full_df: pd.DataFrame) -> List[Dict[str, Any]]:
-        """Analyze each column in the dataset."""
-        columns_info = []
-        
-        for col in analysis_df.columns:
-            col_data = analysis_df[col]
-            full_col_data = full_df[col]
+        Args:
+            series: Pandas series to analyze
+            column_name: Name of the column
+            
+        Returns:
+            Dictionary with column statistics
+        """
+        try:
+            total_count = len(series)
+            null_count = series.isnull().sum()
+            null_percentage = (null_count / total_count * 100) if total_count > 0 else 0
+            
+            # Clean series (remove nulls)
+            clean_series = series.dropna()
+            clean_count = len(clean_series)
+            
+            # Detect data type
+            data_type = DataAnalysisService.detect_data_type(series)
             
             # Basic statistics
-            null_count = int(full_col_data.isna().sum())
-            null_percentage = (null_count / len(full_df)) * 100
-            unique_count = int(full_col_data.nunique())
+            stats_dict = {
+                "column": column_name,
+                "data_type": data_type,
+                "count": total_count,
+                "null_count": int(null_count),
+                "null_percentage": round(null_percentage, 2),
+                "unique_count": int(series.nunique()),
+                "unique_percentage": round((series.nunique() / total_count * 100) if total_count > 0 else 0, 2),
+                "mean": None,
+                "median": None,
+                "std": None,
+                "min": None,
+                "max": None,
+                "q25": None,
+                "q75": None,
+                "skewness": None,
+                "kurtosis": None,
+                "mode": None,
+                "most_frequent_values": [],
+                "outliers_count": None,
+                "outliers_percentage": None
+            }
             
-            # Data type detection
-            is_numeric = pd.api.types.is_numeric_dtype(col_data)
-            is_potential_date = DataAnalysisService._is_potential_date_column(col_data)
-            is_potential_target = DataAnalysisService._is_potential_target_column(col, col_data)
+            if clean_count == 0:
+                return stats_dict
             
-            # Sample values (non-null)
-            sample_values = col_data.dropna().astype(str).head(5).tolist()
+            # Numeric statistics
+            if data_type in ["integer", "float"]:
+                try:
+                    numeric_series = pd.to_numeric(clean_series, errors='coerce').dropna()
+                    
+                    if len(numeric_series) > 0:
+                        stats_dict.update({
+                            "mean": round(float(numeric_series.mean()), 4),
+                            "median": round(float(numeric_series.median()), 4),
+                            "std": round(float(numeric_series.std()), 4),
+                            "min": round(float(numeric_series.min()), 4),
+                            "max": round(float(numeric_series.max()), 4),
+                            "q25": round(float(numeric_series.quantile(0.25)), 4),
+                            "q75": round(float(numeric_series.quantile(0.75)), 4),
+                        })
+                        
+                        # Skewness and kurtosis
+                        if len(numeric_series) > 3:
+                            stats_dict["skewness"] = round(float(stats.skew(numeric_series)), 4)
+                            stats_dict["kurtosis"] = round(float(stats.kurtosis(numeric_series)), 4)
+                        
+                        # Outliers using IQR method
+                        q1 = numeric_series.quantile(0.25)
+                        q3 = numeric_series.quantile(0.75)
+                        iqr = q3 - q1
+                        lower_bound = q1 - 1.5 * iqr
+                        upper_bound = q3 + 1.5 * iqr
+                        
+                        outliers = numeric_series[(numeric_series < lower_bound) | (numeric_series > upper_bound)]
+                        stats_dict["outliers_count"] = len(outliers)
+                        stats_dict["outliers_percentage"] = round((len(outliers) / len(numeric_series) * 100), 2)
+                        
+                except Exception as e:
+                    logger.warning(f"Error calculating numeric statistics for {column_name}", error=str(e))
             
-            # Statistics based on data type
-            statistics = None
-            if is_numeric:
-                statistics = {
-                    'mean': float(col_data.mean()) if not col_data.isna().all() else None,
-                    'median': float(col_data.median()) if not col_data.isna().all() else None,
-                    'std': float(col_data.std()) if not col_data.isna().all() else None,
-                    'min': float(col_data.min()) if not col_data.isna().all() else None,
-                    'max': float(col_data.max()) if not col_data.isna().all() else None,
-                    'q25': float(col_data.quantile(0.25)) if not col_data.isna().all() else None,
-                    'q75': float(col_data.quantile(0.75)) if not col_data.isna().all() else None,
-                }
-            else:
-                most_frequent = col_data.mode()
-                statistics = {
-                    'most_frequent': str(most_frequent.iloc[0]) if len(most_frequent) > 0 else None,
-                    'unique_values': min(unique_count, 10),  # Limit for performance
-                    'top_values': col_data.value_counts().head(5).to_dict()
-                }
-            
-            columns_info.append({
-                'name': col,
-                'data_type': str(col_data.dtype),
-                'null_count': null_count,
-                'null_percentage': round(null_percentage, 2),
-                'unique_count': unique_count,
-                'is_numeric': is_numeric,
-                'is_potential_date': is_potential_date,
-                'is_potential_target': is_potential_target,
-                'statistics': statistics,
-                'sample_values': sample_values
-            })
-        
-        return columns_info
-    
-    @staticmethod
-    def _is_potential_date_column(col_data: pd.Series) -> bool:
-        """Check if a column could be a date column."""
-        if col_data.dtype == 'object':
+            # Mode and most frequent values
             try:
-                # Try to parse a sample of non-null values
-                sample = col_data.dropna().head(100)
-                if len(sample) == 0:
-                    return False
-                
-                parsed = pd.to_datetime(sample, errors='coerce')
-                success_rate = parsed.notna().sum() / len(sample)
-                return success_rate > 0.8  # 80% success rate
-            except:
-                return False
-        return False
+                value_counts = clean_series.value_counts().head(5)
+                stats_dict["mode"] = str(value_counts.index[0]) if len(value_counts) > 0 else None
+                stats_dict["most_frequent_values"] = [
+                    {"value": str(val), "count": int(count), "percentage": round(count / clean_count * 100, 2)}
+                    for val, count in value_counts.items()
+                ]
+            except Exception as e:
+                logger.warning(f"Error calculating mode for {column_name}", error=str(e))
+            
+            return stats_dict
+            
+        except Exception as e:
+            logger.error(f"Error calculating statistics for column {column_name}", error=str(e))
+            return {
+                "column": column_name,
+                "data_type": "error",
+                "count": 0,
+                "null_count": 0,
+                "null_percentage": 0,
+                "unique_count": 0,
+                "unique_percentage": 0,
+                "mean": None,
+                "median": None,
+                "std": None,
+                "min": None,
+                "max": None,
+                "q25": None,
+                "q75": None,
+                "skewness": None,
+                "kurtosis": None,
+                "mode": None,
+                "most_frequent_values": [],
+                "outliers_count": None,
+                "outliers_percentage": None
+            }
     
     @staticmethod
-    def _is_potential_target_column(col_name: str, col_data: pd.Series) -> bool:
-        """Check if a column could be a target variable."""
-        # Check column name patterns
-        target_keywords = [
-            'target', 'label', 'y', 'output', 'result', 'outcome',
-            'sales', 'revenue', 'price', 'value', 'amount', 'count',
-            'demand', 'volume', 'quantity', 'score', 'rating'
-        ]
+    def calculate_data_quality(df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Calculate comprehensive data quality metrics.
         
-        name_lower = col_name.lower()
-        has_target_keyword = any(keyword in name_lower for keyword in target_keywords)
-        
-        # Check if numeric (targets are usually numeric)
-        is_numeric = pd.api.types.is_numeric_dtype(col_data)
-        
-        # Check variability (targets should have some variation)
-        has_variation = col_data.nunique() > 1 if not col_data.empty else False
-        
-        return has_target_keyword and is_numeric and has_variation
-    
-    @staticmethod
-    def _detect_time_series(df: pd.DataFrame, columns_info: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """Detect time series patterns in the dataset."""
-        # Find potential date columns
-        date_columns = [col['name'] for col in columns_info if col['is_potential_date']]
-        
-        if not date_columns:
-            return None
-        
-        # Use the first date column found
-        date_column = date_columns[0]
-        
+        Args:
+            df: Pandas DataFrame to analyze
+            
+        Returns:
+            Dictionary with data quality metrics
+        """
         try:
-            # Parse dates
-            dates = pd.to_datetime(df[date_column], errors='coerce')
-            valid_dates = dates.dropna().sort_values()
+            total_rows = len(df)
+            total_columns = len(df.columns)
+            total_cells = total_rows * total_columns
             
-            if len(valid_dates) < 2:
-                return None
+            if total_cells == 0:
+                return {
+                    "total_rows": 0,
+                    "total_columns": 0,
+                    "missing_values": {},
+                    "missing_percentages": {},
+                    "duplicate_rows": 0,
+                    "data_types": {},
+                    "numeric_columns": [],
+                    "categorical_columns": [],
+                    "date_columns": [],
+                    "outliers_count": {},
+                    "completeness_score": 0,
+                    "consistency_score": 0,
+                    "overall_quality_score": 0,
+                    "recommendations": [],
+                    "issues": []
+                }
             
-            # Analyze frequency
-            time_diffs = valid_dates.diff().dropna()
-            most_common_diff = time_diffs.mode()
+            # Missing values analysis
+            missing_values = {}
+            missing_percentages = {}
+            total_missing = 0
             
-            frequency = None
-            if len(most_common_diff) > 0:
-                diff_days = most_common_diff.iloc[0].days
-                if diff_days == 1:
-                    frequency = 'daily'
-                elif diff_days == 7:
-                    frequency = 'weekly'
-                elif 28 <= diff_days <= 31:
-                    frequency = 'monthly'
-                elif 365 <= diff_days <= 366:
-                    frequency = 'yearly'
-                else:
-                    frequency = f'{diff_days}_days'
+            for col in df.columns:
+                missing_count = df[col].isnull().sum()
+                missing_values[col] = int(missing_count)
+                missing_percentages[col] = round((missing_count / total_rows * 100), 2)
+                total_missing += missing_count
             
-            # Check regularity
-            is_regular = len(time_diffs.unique()) <= 3  # Allow some variation
+            # Duplicate rows
+            duplicate_rows = df.duplicated().sum()
+            
+            # Data types analysis
+            data_types = {}
+            numeric_columns = []
+            categorical_columns = []
+            date_columns = []
+            
+            for col in df.columns:
+                dtype = DataAnalysisService.detect_data_type(df[col])
+                data_types[col] = dtype
+                
+                if dtype in ["integer", "float"]:
+                    numeric_columns.append(col)
+                elif dtype == "datetime":
+                    date_columns.append(col)
+                elif dtype in ["categorical", "boolean"]:
+                    categorical_columns.append(col)
+            
+            # Outliers analysis (for numeric columns only)
+            outliers_count = {}
+            for col in numeric_columns:
+                try:
+                    numeric_series = pd.to_numeric(df[col], errors='coerce').dropna()
+                    if len(numeric_series) > 0:
+                        q1 = numeric_series.quantile(0.25)
+                        q3 = numeric_series.quantile(0.75)
+                        iqr = q3 - q1
+                        lower_bound = q1 - 1.5 * iqr
+                        upper_bound = q3 + 1.5 * iqr
+                        outliers = numeric_series[(numeric_series < lower_bound) | (numeric_series > upper_bound)]
+                        outliers_count[col] = len(outliers)
+                except Exception:
+                    outliers_count[col] = 0
+            
+            # Quality scores
+            completeness_score = ((total_cells - total_missing) / total_cells * 100) if total_cells > 0 else 0
+            
+            # Consistency score (based on data type consistency)
+            consistency_issues = 0
+            for col in df.columns:
+                try:
+                    # Check for mixed types in text columns
+                    if data_types[col] == "text":
+                        sample = df[col].dropna().sample(n=min(100, len(df[col].dropna())), random_state=42)
+                        # Simple check for mixed numeric/text
+                        numeric_count = 0
+                        for val in sample:
+                            try:
+                                float(str(val))
+                                numeric_count += 1
+                            except ValueError:
+                                pass
+                        if 0.1 < numeric_count / len(sample) < 0.9:  # Mixed types
+                            consistency_issues += 1
+                except Exception:
+                    pass
+            
+            consistency_score = max(0, 100 - (consistency_issues / total_columns * 100)) if total_columns > 0 else 100
+            
+            # Overall quality score
+            overall_quality_score = (completeness_score * 0.6 + consistency_score * 0.4)
+            
+            # Recommendations and issues
+            recommendations = []
+            issues = []
+            
+            # Missing values issues
+            high_missing_cols = [col for col, pct in missing_percentages.items() if pct > 30]
+            if high_missing_cols:
+                issues.append(f"Colunas com muitos valores ausentes (>30%): {', '.join(high_missing_cols)}")
+                recommendations.append("Considere imputação ou remoção de colunas com muitos valores ausentes")
+            
+            # Duplicate rows
+            if duplicate_rows > 0:
+                issues.append(f"{duplicate_rows} linhas duplicadas encontradas")
+                recommendations.append("Remova linhas duplicadas para melhorar a qualidade dos dados")
+            
+            # Low data volume
+            if total_rows < 100:
+                issues.append("Dataset muito pequeno para análise robusta")
+                recommendations.append("Colete mais dados para melhorar a confiabilidade da análise")
+            
+            # No numeric columns
+            if len(numeric_columns) == 0:
+                issues.append("Nenhuma coluna numérica encontrada")
+                recommendations.append("Verifique se as colunas numéricas estão no formato correto")
+            
+            # High outlier percentage
+            high_outlier_cols = [col for col, count in outliers_count.items() 
+                               if count / total_rows > 0.1]  # >10% outliers
+            if high_outlier_cols:
+                issues.append(f"Colunas com muitos outliers: {', '.join(high_outlier_cols)}")
+                recommendations.append("Investigue e trate outliers nas colunas numéricas")
             
             return {
-                'date_column': date_column,
-                'frequency': frequency,
-                'start_date': str(valid_dates.min().date()),
-                'end_date': str(valid_dates.max().date()),
-                'total_periods': len(valid_dates),
-                'missing_periods': len(df) - len(valid_dates),
-                'is_regular': is_regular,
-                'seasonality_detected': None  # Could be expanded with seasonal analysis
+                "total_rows": total_rows,
+                "total_columns": total_columns,
+                "missing_values": missing_values,
+                "missing_percentages": missing_percentages,
+                "duplicate_rows": int(duplicate_rows),
+                "data_types": data_types,
+                "numeric_columns": numeric_columns,
+                "categorical_columns": categorical_columns,
+                "date_columns": date_columns,
+                "outliers_count": outliers_count,
+                "completeness_score": round(completeness_score, 2),
+                "consistency_score": round(consistency_score, 2),
+                "overall_quality_score": round(overall_quality_score, 2),
+                "recommendations": recommendations,
+                "issues": issues
             }
             
         except Exception as e:
-            logger.warning("Failed to analyze time series", date_column=date_column, error=str(e))
+            logger.error("Error calculating data quality", error=str(e))
+            return {
+                "total_rows": 0,
+                "total_columns": 0,
+                "missing_values": {},
+                "missing_percentages": {},
+                "duplicate_rows": 0,
+                "data_types": {},
+                "numeric_columns": [],
+                "categorical_columns": [],
+                "date_columns": [],
+                "outliers_count": {},
+                "completeness_score": 0,
+                "consistency_score": 0,
+                "overall_quality_score": 0,
+                "recommendations": ["Erro na análise de qualidade dos dados"],
+                "issues": ["Erro interno na análise"]
+            }
+    
+    @staticmethod
+    def calculate_correlations(df: pd.DataFrame) -> Optional[Dict[str, Dict[str, float]]]:
+        """
+        Calculate correlation matrix for numeric columns.
+        
+        Args:
+            df: Pandas DataFrame
+            
+        Returns:
+            Correlation matrix as nested dictionary
+        """
+        try:
+            # Get only numeric columns
+            numeric_df = df.select_dtypes(include=[np.number])
+            
+            if len(numeric_df.columns) < 2:
+                return None
+            
+            # Calculate correlation matrix
+            corr_matrix = numeric_df.corr()
+            
+            # Convert to nested dictionary
+            correlations = {}
+            for col1 in corr_matrix.columns:
+                correlations[col1] = {}
+                for col2 in corr_matrix.columns:
+                    corr_value = corr_matrix.loc[col1, col2]
+                    correlations[col1][col2] = round(float(corr_value), 4) if not pd.isna(corr_value) else 0.0
+            
+            return correlations
+            
+        except Exception as e:
+            logger.error("Error calculating correlations", error=str(e))
             return None
     
-    @staticmethod
-    def _calculate_quality_score(columns_info: List[Dict[str, Any]], total_rows: int) -> float:
-        """Calculate overall data quality score (0-1)."""
-        if not columns_info:
-            return 0.0
+    async def analyze_dataset_complete(
+        self, 
+        df: pd.DataFrame, 
+        dataset_id: int
+    ) -> Dict[str, Any]:
+        """
+        Perform complete dataset analysis asynchronously.
         
-        scores = []
-        
-        for col in columns_info:
-            col_score = 1.0
+        Args:
+            df: Pandas DataFrame to analyze
+            dataset_id: Dataset ID
             
-            # Penalize missing values
-            null_percentage = col['null_percentage']
-            if null_percentage > 50:
-                col_score *= 0.3
-            elif null_percentage > 20:
-                col_score *= 0.7
-            elif null_percentage > 5:
-                col_score *= 0.9
+        Returns:
+            Complete analysis results
+        """
+        start_time = datetime.now()
+        
+        try:
+            # Calculate memory usage
+            memory_usage_mb = df.memory_usage(deep=True).sum() / (1024 * 1024)
             
-            # Reward data type consistency
-            if col['is_numeric'] or col['is_potential_date']:
-                col_score *= 1.1
+            # Run analyses in parallel
+            loop = asyncio.get_event_loop()
             
-            # Penalize low uniqueness (except for categorical variables)
-            uniqueness_ratio = col['unique_count'] / total_rows
-            if uniqueness_ratio < 0.01 and col['is_numeric']:  # Very low uniqueness for numeric
-                col_score *= 0.8
+            # Submit tasks to thread pool
+            quality_task = loop.run_in_executor(
+                self.executor,
+                self.calculate_data_quality,
+                df
+            )
             
-            scores.append(min(col_score, 1.0))
-        
-        return round(sum(scores) / len(scores), 3)
-    
-    @staticmethod
-    def _generate_recommendations(
-        columns_info: List[Dict[str, Any]], 
-        time_series_info: Optional[Dict[str, Any]], 
-        total_rows: int
-    ) -> List[str]:
-        """Generate recommendations based on analysis."""
-        recommendations = []
-        
-        # Date column recommendations
-        date_columns = [col for col in columns_info if col['is_potential_date']]
-        if not date_columns:
-            recommendations.append("Consider adding a date/time column for time series analysis")
-        elif len(date_columns) > 1:
-            recommendations.append("Multiple date columns detected. Choose the primary time column")
-        
-        # Target variable recommendations
-        target_columns = [col for col in columns_info if col['is_potential_target']]
-        if not target_columns:
-            recommendations.append("No clear target variable detected. Specify your prediction target")
-        elif len(target_columns) > 3:
-            recommendations.append("Multiple potential targets found. Focus on the main variable to predict")
-        
-        # Missing values recommendations
-        high_missing_cols = [col for col in columns_info if col['null_percentage'] > 20]
-        if high_missing_cols:
-            recommendations.append(f"Handle missing values in {len(high_missing_cols)} columns with >20% missing data")
-        
-        # Data size recommendations
-        if total_rows < 100:
-            recommendations.append("Dataset is very small. Consider collecting more data for better model performance")
-        elif total_rows > 100000:
-            recommendations.append("Large dataset detected. Consider sampling for faster preprocessing")
-        
-        return recommendations
-    
-    @staticmethod
-    def _generate_warnings_errors(
-        columns_info: List[Dict[str, Any]], 
-        time_series_info: Optional[Dict[str, Any]], 
-        total_rows: int
-    ) -> Tuple[List[str], List[str]]:
-        """Generate warnings and errors based on analysis."""
-        warnings = []
-        errors = []
-        
-        # Critical errors
-        if total_rows == 0:
-            errors.append("Dataset is empty")
-        elif len(columns_info) < 2:
-            errors.append("Dataset must have at least 2 columns")
-        
-        # Warnings
-        if total_rows < 50:
-            warnings.append("Very small dataset - results may not be reliable")
-        
-        critical_missing_cols = [col for col in columns_info if col['null_percentage'] > 80]
-        if critical_missing_cols:
-            warnings.append(f"Columns with >80% missing values: {[col['name'] for col in critical_missing_cols]}")
-        
-        if time_series_info and time_series_info['missing_periods'] > 0:
-            warnings.append(f"Time series has {time_series_info['missing_periods']} missing time periods")
-        
-        return warnings, errors
+            correlations_task = loop.run_in_executor(
+                self.executor,
+                self.calculate_correlations,
+                df
+            )
+            
+            # Calculate column statistics for each column
+            column_stats_tasks = []
+            for col in df.columns:
+                task = loop.run_in_executor(
+                    self.executor,
+                    self.calculate_column_statistics,
+                    df[col],
+                    col
+                )
+                column_stats_tasks.append(task)
+            
+            # Wait for all tasks
+            data_quality = await quality_task
+            correlations = await correlations_task
+            columns_statistics = await asyncio.gather(*column_stats_tasks)
+            
+            # General statistics
+            general_stats = {
+                "memory_usage_mb": round(memory_usage_mb, 2),
+                "shape": df.shape,
+                "dtypes_summary": df.dtypes.value_counts().to_dict(),
+                "missing_data_summary": {
+                    "total_missing_cells": df.isnull().sum().sum(),
+                    "missing_percentage": round(df.isnull().sum().sum() / (df.shape[0] * df.shape[1]) * 100, 2)
+                }
+            }
+            
+            end_time = datetime.now()
+            
+            return {
+                "dataset_id": dataset_id,
+                "total_rows": len(df),
+                "total_columns": len(df.columns),
+                "memory_usage_mb": round(memory_usage_mb, 2),
+                "columns_statistics": columns_statistics,
+                "correlations": correlations,
+                "general_stats": general_stats,
+                "data_quality": data_quality,
+                "analysis_timestamp": end_time
+            }
+            
+        except Exception as e:
+            logger.error("Error in complete dataset analysis", error=str(e))
+            end_time = datetime.now()
+            
+            return {
+                "dataset_id": dataset_id,
+                "total_rows": 0,
+                "total_columns": 0,
+                "memory_usage_mb": 0.0,
+                "columns_statistics": [],
+                "correlations": None,
+                "general_stats": {},
+                "data_quality": {
+                    "total_rows": 0,
+                    "total_columns": 0,
+                    "overall_quality_score": 0,
+                    "recommendations": ["Erro na análise dos dados"],
+                    "issues": ["Erro interno na análise"]
+                },
+                "analysis_timestamp": end_time
+            }

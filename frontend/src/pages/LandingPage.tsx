@@ -30,12 +30,12 @@ const LandingPage = () => {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
             {isAuthenticated ? (
               <Button
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/pipeline')}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 text-lg"
                 size="lg"
               >
                 <BarChart3 className="h-5 w-5 mr-2" />
-                Acessar Dashboard
+                Acessar Plataforma
               </Button>
             ) : (
               <>

@@ -119,7 +119,7 @@ async def upload_dataset(
         )
 
     # Create upload directory if it doesn't exist
-    upload_dir = os.path.join("/app/uploads", "datasets", str(current_user.id))
+    upload_dir = os.path.join("uploads", "datasets", str(current_user.id))
     os.makedirs(upload_dir, exist_ok=True)
 
     # Save file

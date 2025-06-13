@@ -42,7 +42,7 @@ const AuthPage: React.FC = () => {
 
   // Redirecionar se já estiver autenticado
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/pipeline" replace />;
   }
 
   // Mostrar loading enquanto verifica autenticação

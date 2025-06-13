@@ -70,8 +70,8 @@ const SimpleLoginForm: React.FC<SimpleLoginFormProps> = ({ onSwitchToRegister })
           description: "Bem-vindo de volta ao VUR",
         });
 
-        // Redirecionar para dashboard
-        window.location.href = '/dashboard';
+        // Redirecionar para pipeline
+        window.location.href = '/pipeline';
       } else {
         console.error('❌ Erro no login:', data);
         setError(data.message || data.detail || 'Erro no login');

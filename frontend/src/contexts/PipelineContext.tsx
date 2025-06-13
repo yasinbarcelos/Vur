@@ -2,10 +2,13 @@ import React, { createContext, useContext, useState, ReactNode, useEffect } from
 
 export interface PipelineData {
   file?: File;
+  datasetId?: number;
+  datasetName?: string;
   data?: any[];
   columns?: string[];
   targetColumn?: string;
   dateColumn?: string;
+  totalRows?: number;
   preprocessingConfig?: any;
   processedData?: any[];
   features?: string[];
