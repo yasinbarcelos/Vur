@@ -89,7 +89,7 @@ interface CustomLayer {
 }
 
 const ModelConfiguration = () => {
-  const { pipelineData, updatePipelineData, completeStep } = usePipeline();
+  const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
 
   const [config, setConfig] = useState<ModelConfig>({
@@ -382,7 +382,7 @@ const ModelConfiguration = () => {
     }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!config.algorithm) {
       toast({
         title: "Erro de configuração",
@@ -392,27 +392,76 @@ const ModelConfiguration = () => {
       return;
     }
 
-    // Preparar configuração final
-    const finalConfig = { ...config };
-    
-    // Se for modelo custom, incluir configuração personalizada
-    if (config.algorithm === 'custom') {
-      finalConfig.customModel = customModel;
+    try {
+      // Preparar configuração final
+      const finalConfig = { ...config };
+      
+      // Se for modelo custom, incluir configuração personalizada
+      if (config.algorithm === 'custom') {
+        finalConfig.customModel = customModel;
+      }
+
+      // Salvar configuração completa localmente
+      updatePipelineData({
+        algorithm: config.algorithm,
+        modelConfig: finalConfig,
+        modelingType: (pipelineData.features?.length || 0) > 1 ? 'multivariate' : 'univariate'
+      });
+
+      // Enviar dados para a API se há pipeline ID
+      if (pipelineData.pipelineId) {
+        // Mapear algoritmo para categoria
+        const getAlgorithmCategory = (algorithm: string) => {
+          const categories: { [key: string]: string } = {
+            'lstm': 'deep_learning',
+            'gru': 'deep_learning',
+            'transformer': 'deep_learning',
+            'cnn': 'deep_learning',
+            'arima': 'statistical',
+            'sarima': 'statistical',
+            'var': 'statistical',
+            'prophet': 'facebook_prophet',
+            'xgboost': 'ensemble',
+            'random_forest': 'ensemble',
+            'svm': 'machine_learning',
+            'linear_regression': 'regression',
+            'custom': 'custom'
+          };
+          return categories[algorithm] || 'machine_learning';
+        };
+
+        const stepData = {
+          algorithm: config.algorithm,
+          algorithm_category: getAlgorithmCategory(config.algorithm),
+          hyperparameters: config.hyperparameters,
+          model_type: (pipelineData.features?.length || 0) > 1 ? 'multivariate' : 'univariate',
+          validation_method: config.validation.method,
+          metrics_config: {
+            primary_metric: 'mse',
+            additional_metrics: config.metrics
+          },
+          auto_hyperparameter_tuning: config.optimization.enabled,
+          tuning_method: config.optimization.method
+        };
+
+        await updateStepData('model', stepData);
+        await completeStepRemote('modelo'); // API usa 'modelo'
+      }
+
+      completeStep('model');
+
+      toast({
+        title: "Modelo configurado!",
+        description: `${config.algorithm === 'custom' ? 'Modelo personalizado' : config.algorithm} configurado com sucesso`,
+      });
+    } catch (error) {
+      console.error('Erro ao salvar configuração do modelo:', error);
+      toast({
+        title: "Erro de configuração",
+        description: "Erro ao salvar configurações do modelo",
+        variant: "destructive"
+      });
     }
-
-    // Salvar configuração completa
-    updatePipelineData({
-      algorithm: config.algorithm,
-      modelConfig: finalConfig,
-      modelingType: (pipelineData.features?.length || 0) > 1 ? 'multivariate' : 'univariate'
-    });
-
-    completeStep('model');
-
-    toast({
-      title: "Modelo configurado!",
-      description: `${config.algorithm === 'custom' ? 'Modelo personalizado' : config.algorithm} configurado com sucesso`,
-    });
   };
 
   const currentHyperparams = config.algorithm ? getHyperparameters(config.algorithm) : {};

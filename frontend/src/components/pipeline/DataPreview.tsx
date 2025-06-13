@@ -39,7 +39,7 @@ interface DataQualityReport {
 }
 
 const DataPreview = () => {
-  const { pipelineData, updatePipelineData, completeStep, goToStep } = usePipeline();
+  const { pipelineData, updatePipelineData, completeStep, goToStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
   // Estados para carregamento de dados da API
@@ -52,19 +52,23 @@ const DataPreview = () => {
       if (pipelineData.datasetId && (!pipelineData.data || pipelineData.data.length === 0)) {
         setIsLoadingData(true);
         try {
-          const preview = await getDatasetPreview(pipelineData.datasetId, 100);
+          // Primeiro carregar preview para mostrar na tela (apenas primeiras linhas)
+          const preview = await getDatasetPreview(pipelineData.datasetId, 10);
           setApiData(preview);
           
-          // Atualizar dados do pipeline com dados da API
+          // Agora carregar TODOS os dados para o pipeline (para uso nos outros componentes)
+          const fullData = await getDatasetPreview(pipelineData.datasetId, preview.total_rows);
+          
+          // Atualizar dados do pipeline com TODOS os dados da API
           updatePipelineData({
-            data: preview.data,
-            columns: preview.columns,
-            totalRows: preview.total_rows
+            data: fullData.data,
+            columns: fullData.columns,
+            totalRows: fullData.total_rows
           });
           
           toast({
             title: "Dados carregados",
-            description: `${preview.columns.length} colunas e ${preview.total_rows} registros carregados da API`,
+            description: `${fullData.columns.length} colunas e ${fullData.total_rows} registros carregados da API`,
           });
         } catch (error) {
           toast({
@@ -196,7 +200,7 @@ const DataPreview = () => {
     goToStep('upload');
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!pipelineData.dateColumn || !pipelineData.targetColumn) {
       toast({
         title: "Configuração incompleta",
@@ -205,7 +209,49 @@ const DataPreview = () => {
       });
       return;
     }
-    completeStep('preview');
+
+    try {
+      // Enviar dados para a API se há pipeline ID
+      if (pipelineData.pipelineId && pipelineData.datasetId) {
+        const stepData = {
+          columns: pipelineData.columns,
+          sample_data: pipelineData.data?.slice(0, 5) || [], // Primeiras 5 linhas como amostra
+          data_types: pipelineData.columns?.reduce((acc, col) => {
+            // Inferir tipo baseado nos dados
+            const sampleValue = pipelineData.data?.[0]?.[col];
+            if (typeof sampleValue === 'number') acc[col] = 'float';
+            else if (col === pipelineData.dateColumn) acc[col] = 'datetime';
+            else acc[col] = 'string';
+            return acc;
+          }, {} as Record<string, string>) || {},
+          missing_values: pipelineData.columns?.reduce((acc, col) => {
+            // Calcular valores faltantes (simulado)
+            acc[col] = 0;
+            return acc;
+          }, {} as Record<string, number>) || {},
+          date_column: pipelineData.dateColumn,
+          target_column: pipelineData.targetColumn,
+          column_suggestions: {
+            date_columns: pipelineData.dateColumn ? [pipelineData.dateColumn] : [],
+            target_columns: pipelineData.targetColumn ? [pipelineData.targetColumn] : []
+          },
+          data_quality_score: 0.95,
+          quality_issues: []
+        };
+
+        await updateStepData('preview', stepData);
+        await completeStepRemote('preview');
+      }
+
+      completeStep('preview');
+    } catch (error) {
+      console.error('Erro ao salvar preview:', error);
+      toast({
+        title: "Erro ao salvar preview",
+        description: "Erro ao salvar configurações do preview",
+        variant: "destructive"
+      });
+    }
   };
 
   const getQualityBadgeColor = (issues: string[]) => {
@@ -228,6 +274,9 @@ const DataPreview = () => {
   // Dados atuais (do pipeline ou da API)
   const currentData = pipelineData.data || apiData?.data;
   const currentColumns = pipelineData.columns || apiData?.columns;
+  
+  // Dados para preview na tabela (apenas primeiras linhas para exibição)
+  const previewDisplayData = apiData?.data || currentData?.slice(0, 10) || [];
 
   // Se está carregando dados da API
   if (isLoadingData) {
@@ -262,7 +311,7 @@ const DataPreview = () => {
     );
   }
 
-  const previewData = currentData.slice(0, 10);
+  const previewData = previewDisplayData;
 
   return (
     <div className="space-y-6">

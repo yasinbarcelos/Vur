@@ -30,7 +30,7 @@ interface FeatureConfig {
 }
 
 const FeatureEngineering = () => {
-  const { pipelineData, updatePipelineData, completeStep } = usePipeline();
+  const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
   const [config, setConfig] = useState<FeatureConfig>({
@@ -347,7 +347,7 @@ const FeatureEngineering = () => {
     };
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     // Validações
     if (config.inputSeries.length === 0) {
       toast({
@@ -367,17 +367,54 @@ const FeatureEngineering = () => {
       return;
     }
 
-    // Salvar configuração
-    updatePipelineData({ 
-      features: config.inputSeries.map(s => `feature_${s}`)
-    });
-    
-    completeStep('features');
-    
-    toast({
-      title: "Configuração salva!",
-      description: "Engenharia de atributos configurada com sucesso",
-    });
+    try {
+      // Salvar configuração localmente
+      updatePipelineData({ 
+        features: config.inputSeries.map(s => `feature_${s}`)
+      });
+
+      // Enviar dados para a API se há pipeline ID
+      if (pipelineData.pipelineId) {
+        const stepData = {
+          selected_features: config.inputSeries,
+          feature_engineering: {
+            input_series: config.inputSeries,
+            target_series: config.targetSeries,
+            use_all_input_series: config.useAllInputSeries,
+            predict_all_series: config.predictAllSeries,
+            window_size_method: config.windowSizeMethod
+          },
+          input_window_size: config.inputWindowSize,
+          forecast_horizon: config.forecastHorizon,
+          feature_selection_method: "correlation",
+          feature_importance: {},
+          feature_correlations: {},
+          lag_features: [1, 7, 30],
+          rolling_features: [
+            { window: 7, operation: 'mean' },
+            { window: 14, operation: 'std' },
+            { window: 30, operation: 'mean' }
+          ]
+        };
+
+        await updateStepData('features', stepData);
+        await completeStepRemote('features');
+      }
+      
+      completeStep('features');
+      
+      toast({
+        title: "Configuração salva!",
+        description: "Engenharia de atributos configurada com sucesso",
+      });
+    } catch (error) {
+      console.error('Erro ao salvar engenharia de features:', error);
+      toast({
+        title: "Erro de configuração",
+        description: "Erro ao salvar configurações de features",
+        variant: "destructive"
+      });
+    }
   };
 
   const vizData = getVisualizationData();

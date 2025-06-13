@@ -12,7 +12,7 @@ import { api } from '@/lib/api';
 import { Dataset, DatasetListResponse, DatasetUploadResponse, DatasetPreview } from '@/types/dataset';
 
 const DataUpload = () => {
-  const { pipelineData, updatePipelineData, goToStep, clearSavedState, completeStep } = usePipeline();
+  const { pipelineData, updatePipelineData, goToStep, clearSavedState, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
   // Estados para upload
@@ -143,17 +143,19 @@ const DataUpload = () => {
     if (!uploadedFile || !datasetName.trim()) {
       toast({
         title: "Dados incompletos",
-        description: "Por favor, selecione um arquivo e forneça um nome para o dataset",
+        description: "Por favor, selecione um arquivo e informe um nome para o dataset",
         variant: "destructive"
       });
       return;
     }
 
     setIsProcessing(true);
-    setUploadProgress(0);
+    setUploadProgress(10);
 
     try {
-      // Fazer upload do arquivo para o backend
+      setUploadProgress(30);
+      
+      // Create form data for the upload
       const formData = new FormData();
       formData.append('file', uploadedFile);
       
@@ -163,18 +165,15 @@ const DataUpload = () => {
         {
           headers: {
             'Content-Type': 'multipart/form-data',
-          },
-          onUploadProgress: (progressEvent) => {
-            if (progressEvent.total) {
-              const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-              setUploadProgress(progress);
-            }
-          },
+          }
         }
       );
+      
+      setUploadProgress(60);
 
-      // Processar arquivo localmente para o pipeline
+      // 2. Processar dados localmente para detecção de colunas
       const reader = new FileReader();
+      
       reader.onload = async (e) => {
         const csvData = e.target?.result as string;
         const lines = csvData.split('\n').filter(line => line.trim().length > 0);
@@ -201,7 +200,8 @@ const DataUpload = () => {
           columns: headers, 
           data: allRows,
           dateColumn: suggestions.dateColumn || '',
-          targetColumn: suggestions.targetColumn || ''
+          targetColumn: suggestions.targetColumn || '',
+          totalRows: allRows.length
         });
         
         setIsProcessing(false);
@@ -212,15 +212,35 @@ const DataUpload = () => {
           description: `${headers.length} colunas e ${allRows.length} registros processados.`,
         });
 
+        // Enviar dados para a API se há pipeline ID
+        if (pipelineData.pipelineId) {
+          try {
+            const stepData = {
+              dataset_id: uploadResponse.dataset_id,
+              dataset_name: datasetName,
+              total_rows: allRows.length,
+              total_columns: headers.length,
+              file_size: uploadedFile.size,
+              file_type: 'csv',
+              upload_timestamp: new Date().toISOString()
+            };
+
+            await updateStepData('upload', stepData);
+            await completeStepRemote('upload');
+          } catch (apiError) {
+            console.error('Erro ao atualizar step na API:', apiError);
+            // Continuar mesmo se falhar na API
+          }
+        }
+
         // Recarregar lista de datasets
         await loadExistingDatasets();
 
         // Redirecionar automaticamente para preview
         setTimeout(() => {
+          completeStep('upload');
           goToStep('preview');
         }, 1000);
-
-        completeStep('upload');
       };
       
       reader.onerror = () => {
@@ -278,33 +298,56 @@ const DataUpload = () => {
     setIsProcessing(true);
 
     try {
-      // Detectar colunas automaticamente
-      const suggestions = detectColumns(datasetPreview.data, datasetPreview.columns);
+      // Carregar TODOS os dados do dataset, não apenas o preview
+      const fullDataset: DatasetPreview = await api.datasets.preview(dataset.id.toString(), { limit: datasetPreview.total_rows });
       
-      // Salvar dados no contexto do pipeline
+      // Detectar colunas automaticamente
+      const suggestions = detectColumns(fullDataset.data, fullDataset.columns);
+      
+      // Salvar TODOS os dados no contexto do pipeline
       updatePipelineData({ 
         datasetId: dataset.id,
         datasetName: dataset.name,
-        columns: datasetPreview.columns, 
-        data: datasetPreview.data,
+        columns: fullDataset.columns, 
+        data: fullDataset.data,
         dateColumn: suggestions.dateColumn || '',
         targetColumn: suggestions.targetColumn || '',
-        totalRows: datasetPreview.total_rows
+        totalRows: fullDataset.total_rows
       });
+      
+      // Enviar dados para a API se há pipeline ID
+      if (pipelineData.pipelineId) {
+        try {
+          const stepData = {
+            dataset_id: dataset.id,
+            dataset_name: dataset.name,
+            total_rows: datasetPreview.total_rows,
+            total_columns: datasetPreview.columns.length,
+            file_size: 0, // Dataset já existe, não há arquivo
+            file_type: 'csv',
+            upload_timestamp: new Date().toISOString()
+          };
+
+          await updateStepData('upload', stepData);
+          await completeStepRemote('upload');
+        } catch (apiError) {
+          console.error('Erro ao atualizar step na API:', apiError);
+          // Continuar mesmo se falhar na API
+        }
+      }
       
       setIsProcessing(false);
       
       toast({
         title: "Dataset carregado com sucesso!",
-        description: `${datasetPreview.columns.length} colunas e ${datasetPreview.total_rows} registros carregados.`,
+        description: `${fullDataset.columns.length} colunas e ${fullDataset.total_rows} registros carregados.`,
       });
 
       // Redirecionar automaticamente para preview
       setTimeout(() => {
+        completeStep('upload');
         goToStep('preview');
       }, 1000);
-
-      completeStep('upload');
 
     } catch (error) {
       setIsProcessing(false);
@@ -328,7 +371,28 @@ const DataUpload = () => {
     clearSavedState();
   };
 
-  const handleViewPreview = () => {
+  const handleViewPreview = async () => {
+    // Enviar dados para a API se há pipeline ID
+    if (pipelineData.pipelineId && pipelineData.datasetId) {
+      try {
+        const stepData = {
+          dataset_id: pipelineData.datasetId,
+          dataset_name: pipelineData.datasetName || 'Dataset',
+          total_rows: pipelineData.totalRows || pipelineData.data?.length || 0,
+          total_columns: pipelineData.columns?.length || 0,
+          file_size: pipelineData.file?.size || 0,
+          file_type: 'csv',
+          upload_timestamp: new Date().toISOString()
+        };
+
+        await updateStepData('upload', stepData);
+        await completeStepRemote('upload');
+      } catch (apiError) {
+        console.error('Erro ao atualizar step na API:', apiError);
+        // Continuar mesmo se falhar na API
+      }
+    }
+
     completeStep('upload');
     goToStep('preview');
   };

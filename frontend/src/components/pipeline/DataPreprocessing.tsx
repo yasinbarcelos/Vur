@@ -44,7 +44,7 @@ interface PreprocessingPreview {
 }
 
 const DataPreprocessing = () => {
-  const { pipelineData, updatePipelineData, completeStep } = usePipeline();
+  const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
   const [config, setConfig] = useState<PreprocessingConfig>({
@@ -284,10 +284,33 @@ const DataPreprocessing = () => {
     setIsProcessing(true);
     
     try {
-      // Simular processamento
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
+      // Atualizar dados localmente
       updatePipelineData({ preprocessingConfig: config });
+
+      // Enviar dados para a API se há pipeline ID
+      if (pipelineData.pipelineId) {
+        const stepData = {
+          normalization: config.normalization,
+          transformation: config.transformation,
+          outlier_detection: config.outlierDetection,
+          outlier_method: config.outlierMethod,
+          outlier_threshold: config.outlierThreshold,
+          missing_value_handling: config.missingValueHandling,
+          seasonal_decomposition: config.seasonalDecomposition,
+          smoothing: config.smoothing,
+          smoothing_window: config.smoothingWindow,
+          applied_transformations: [
+            config.normalization !== 'none' ? config.normalization : null,
+            config.transformation !== 'none' ? config.transformation : null,
+            config.outlierDetection ? 'outlier_removal' : null,
+            config.smoothing ? 'smoothing' : null
+          ].filter(Boolean)
+        };
+
+        await updateStepData('preprocessing', stepData);
+        await completeStepRemote('preprocessing');
+      }
+      
       completeStep('preprocessing');
       
       toast({
@@ -295,6 +318,7 @@ const DataPreprocessing = () => {
         description: "As configurações foram salvas e aplicadas aos dados"
       });
     } catch (error) {
+      console.error('Erro ao salvar pré-processamento:', error);
       toast({
         title: "Erro no processamento",
         description: "Erro ao aplicar pré-processamento",

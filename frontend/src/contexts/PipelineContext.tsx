@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { api } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 export interface PipelineData {
   file?: File;
@@ -16,6 +18,7 @@ export interface PipelineData {
   trainSize?: number;
   validationSize?: number;
   testSize?: number;
+  useValidation?: boolean;
   modelingType?: 'univariate' | 'multivariate';
   predictionHorizon?: 'single' | 'multiple';
   algorithm?: string;
@@ -37,6 +40,8 @@ interface PipelineContextType {
   importConfiguration: (file: File) => Promise<boolean>;
   hasSavedState: boolean;
   steps: string[];
+  updateStepData: (stepName: string, stepData: any) => Promise<void>;
+  completeStepRemote: (stepName: string) => Promise<void>;
 }
 
 interface PipelineState {
@@ -225,18 +230,70 @@ export const PipelineProvider: React.FC<{ children: ReactNode }> = ({ children }
     });
   };
 
+  // Função para atualizar dados de uma etapa na API
+  const updateStepData = async (stepName: string, stepData: any): Promise<void> => {
+    if (!pipelineData.pipelineId) {
+      console.warn('No pipeline ID available, skipping API update');
+      return;
+    }
+
+    try {
+      // Mapear nomes de etapas para endpoints correspondentes
+      const stepEndpoints: { [key: string]: string } = {
+        'upload': 'updateUploadStep',
+        'preview': 'updatePreviewStep', 
+        'split': 'updateDivisaoStep',
+        'preprocessing': 'updatePreprocessingStep',
+        'features': 'updateFeaturesStep',
+        'model': 'updateModeloStep'
+      };
+
+      const endpointMethod = stepEndpoints[stepName];
+      if (!endpointMethod) {
+        console.warn(`No API endpoint available for step: ${stepName}`);
+        return;
+      }
+
+      // Fazer chamada para API
+      await (api.pipelines as any)[endpointMethod](pipelineData.pipelineId.toString(), stepData);
+      console.log(`Step ${stepName} data updated successfully`);
+    } catch (error) {
+      console.error(`Error updating step ${stepName} data:`, error);
+      throw error;
+    }
+  };
+
+  // Função para completar uma etapa na API
+  const completeStepRemote = async (stepName: string): Promise<void> => {
+    if (!pipelineData.pipelineId) {
+      console.warn('No pipeline ID available, skipping API update');
+      return;
+    }
+
+    try {
+      await api.pipelines.completeStep(pipelineData.pipelineId.toString(), stepName);
+      console.log(`Step ${stepName} completed successfully`);
+    } catch (error) {
+      console.error(`Error completing step ${stepName}:`, error);
+      throw error;
+    }
+  };
+
   const value: PipelineContextType = {
     currentStep,
+    setCurrentStep,
     completedSteps,
     steps,
-      pipelineData,
-      updatePipelineData,
-      completeStep,
+    pipelineData,
+    updatePipelineData,
+    completeStep,
     goToStep,
     clearSavedState,
     exportConfiguration,
     importConfiguration,
-    hasSavedState: !!savedState
+    hasSavedState: !!savedState,
+    updateStepData,
+    completeStepRemote
   };
 
   return (

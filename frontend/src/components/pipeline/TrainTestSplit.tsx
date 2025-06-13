@@ -19,7 +19,7 @@ interface SplitValidation {
 }
 
 const TrainTestSplit = () => {
-  const { pipelineData, updatePipelineData, completeStep } = usePipeline();
+  const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
   const [useValidation, setUseValidation] = useState(true);
@@ -177,9 +177,7 @@ const TrainTestSplit = () => {
     setIsProcessing(true);
 
     try {
-      // Simular processamento
-      await new Promise(resolve => setTimeout(resolve, 1200));
-    
+      // Atualizar dados localmente
       updatePipelineData({
         trainSize,
         validationSize: useValidation ? validationSize : 0,
@@ -187,13 +185,35 @@ const TrainTestSplit = () => {
         useValidation
       });
 
-    completeStep('split');
+      // Enviar dados para a API se há pipeline ID
+      if (pipelineData.pipelineId) {
+        const stepData = {
+          train_size: trainSize / 100,
+          validation_size: useValidation ? validationSize / 100 : 0,
+          test_size: testSize / 100,
+          split_method: "temporal",
+          split_date: null,
+          cross_validation_config: useValidation ? {
+            method: "time_series_split",
+            n_splits: 5
+          } : null,
+          train_rows: Math.floor((pipelineData.data?.length || 0) * trainSize / 100),
+          validation_rows: useValidation ? Math.floor((pipelineData.data?.length || 0) * validationSize / 100) : 0,
+          test_rows: Math.floor((pipelineData.data?.length || 0) * testSize / 100)
+        };
+
+        await updateStepData('split', stepData);
+        await completeStepRemote('divisao'); // API usa 'divisao'
+      }
+
+      completeStep('split');
       
       toast({
         title: "Divisão configurada!",
         description: `Treino: ${trainSize}%, Validação: ${useValidation ? validationSize : 0}%, Teste: ${testSize}%`,
       });
     } catch (error) {
+      console.error('Erro ao salvar divisão:', error);
       toast({
         title: "Erro na configuração",
         description: "Erro ao configurar divisão dos dados",

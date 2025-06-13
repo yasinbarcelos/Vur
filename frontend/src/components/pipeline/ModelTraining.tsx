@@ -32,7 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 
 const ModelTraining = () => {
-  const { pipelineData, updatePipelineData, completeStep } = usePipeline();
+  const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   const [isTraining, setIsTraining] = useState(false);
   const [trainingComplete, setTrainingComplete] = useState(false);
@@ -216,12 +216,37 @@ const ModelTraining = () => {
     });
   };
 
-  const handleContinue = () => {
-    completeStep('training');
-    toast({
-      title: "Etapa concluída!",
-      description: "Modelo treinado e pronto para monitoramento",
-    });
+  const handleContinue = async () => {
+    try {
+      // Enviar dados para a API se há pipeline ID
+      if (pipelineData.pipelineId) {
+        const stepData = {
+          training_status: trainingComplete ? 'completed' : 'pending',
+          training_progress: trainingProgress,
+          metrics: trainingComplete ? metrics : {},
+          training_logs: trainingLogs,
+          model_saved: trainingComplete,
+          training_timestamp: trainingComplete ? new Date().toISOString() : null
+        };
+
+        await updateStepData('training', stepData);
+        await completeStepRemote('training');
+      }
+
+      completeStep('training');
+      
+      toast({
+        title: "Etapa concluída!",
+        description: "Modelo treinado e pronto para monitoramento",
+      });
+    } catch (error) {
+      console.error('Erro ao salvar treinamento:', error);
+      toast({
+        title: "Erro no treinamento",
+        description: "Erro ao salvar dados do treinamento",
+        variant: "destructive"
+      });
+    }
   };
 
   const createPipeline = async () => {
@@ -321,18 +346,18 @@ const ModelTraining = () => {
 
       // 5. Atualizar etapa de Preprocessing
       const preprocessingStepData = {
-        normalization: pipelineData.preprocessing?.normalization || 'minmax',
-        transformation: pipelineData.preprocessing?.transformation || 'none',
-        outlier_detection: pipelineData.preprocessing?.outliers !== 'none',
-        outlier_method: pipelineData.preprocessing?.outliers || 'iqr',
+        normalization: pipelineData.preprocessingConfig?.normalization || 'minmax',
+        transformation: pipelineData.preprocessingConfig?.transformation || 'none',
+        outlier_detection: pipelineData.preprocessingConfig?.outlierDetection || false,
+        outlier_method: pipelineData.preprocessingConfig?.outlierMethod || 'iqr',
         outlier_threshold: 1.5,
-        missing_value_handling: pipelineData.preprocessing?.missingValues || 'interpolate',
-        seasonal_decomposition: pipelineData.preprocessing?.seasonalDecomposition || false,
-        smoothing: pipelineData.preprocessing?.smoothing || false,
+        missing_value_handling: pipelineData.preprocessingConfig?.missingValueHandling || 'interpolate',
+        seasonal_decomposition: pipelineData.preprocessingConfig?.seasonalDecomposition || false,
+        smoothing: pipelineData.preprocessingConfig?.smoothing || false,
         smoothing_window: 5,
         applied_transformations: [
-          pipelineData.preprocessing?.normalization || 'minmax',
-          pipelineData.preprocessing?.transformation || 'none'
+          pipelineData.preprocessingConfig?.normalization || 'minmax',
+          pipelineData.preprocessingConfig?.transformation || 'none'
         ].filter(t => t !== 'none')
       };
       await api.pipelines.updatePreprocessingStep(pipelineId, preprocessingStepData);
@@ -479,7 +504,7 @@ const ModelTraining = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Target:</span>
-                  <span className="font-medium text-xs">{pipelineData.target || 'N/A'}</span>
+                  <span className="font-medium text-xs">{pipelineData.targetColumn || 'N/A'}</span>
                 </div>
               </div>
             </div>
@@ -524,25 +549,25 @@ const ModelTraining = () => {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Normalização:</span>
                   <span className="font-medium">
-                    {pipelineData.preprocessing?.normalization || 'MinMax'}
+                    {pipelineData.preprocessingConfig?.normalization || 'MinMax'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Missing Values:</span>
                   <span className="font-medium">
-                    {pipelineData.preprocessing?.missingValues || 'Forward Fill'}
+                    {pipelineData.preprocessingConfig?.missingValueHandling || 'Forward Fill'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Outliers:</span>
                   <span className="font-medium">
-                    {pipelineData.preprocessing?.outliers || 'IQR'}
+                    {pipelineData.preprocessingConfig?.outlierMethod || 'IQR'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Features Eng.:</span>
                   <span className="font-medium">
-                    {pipelineData.preprocessing?.featureEngineering ? 'Sim' : 'Não'}
+                    {pipelineData.features && pipelineData.features.length > 0 ? 'Sim' : 'Não'}
                   </span>
                 </div>
               </div>
