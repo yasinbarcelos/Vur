@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePipeline } from '@/contexts/PipelineContext';
+import { usePipelineStep } from '@/hooks/usePipelines';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Brain, 
@@ -92,6 +93,9 @@ const ModelConfiguration = () => {
   const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
 
+  // Carregar dados salvos da etapa de modelo do backend
+  const { data: stepData } = usePipelineStep(pipelineData.pipelineId || 0, 'modelo');
+
   const [config, setConfig] = useState<ModelConfig>({
     algorithm: '',
     hyperparameters: {},
@@ -161,6 +165,53 @@ const ModelConfiguration = () => {
       callbacks: ['early_stopping']
     }
   });
+
+  // Carregar valores salvos do contexto quando componente é montado
+  useEffect(() => {
+    if (pipelineData.algorithm) {
+      setConfig(prev => ({
+        ...prev,
+        algorithm: pipelineData.algorithm
+      }));
+    }
+    
+    if (pipelineData.modelConfig) {
+      const savedConfig = pipelineData.modelConfig;
+      setConfig(prev => ({
+        ...prev,
+        ...savedConfig
+      }));
+      
+      // Se há modelo custom salvo, carregá-lo também
+      if (savedConfig.customModel) {
+        setCustomModel(savedConfig.customModel);
+      }
+    }
+  }, [pipelineData.algorithm, pipelineData.modelConfig]);
+
+  // Carregar valores salvos do backend quando disponíveis
+  useEffect(() => {
+    if (stepData?.data) {
+      const data = stepData.data;
+      
+      setConfig(prev => ({
+        ...prev,
+        algorithm: data.algorithm || prev.algorithm,
+        hyperparameters: data.hyperparameters || prev.hyperparameters,
+        validation: {
+          method: data.validation_method || prev.validation.method,
+          useValidationSet: data.validation_method !== 'holdout' || prev.validation.useValidationSet
+        },
+        optimization: {
+          enabled: data.auto_hyperparameter_tuning !== undefined ? data.auto_hyperparameter_tuning : prev.optimization.enabled,
+          method: data.tuning_method || prev.optimization.method,
+          iterations: prev.optimization.iterations
+        },
+        metrics: data.metrics_config?.additional_metrics || prev.metrics,
+        ensemble: prev.ensemble
+      }));
+    }
+  }, [stepData]);
 
   // Algoritmos disponíveis com categorias
   const algorithms = {

@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Check, Users, Calendar, BarChart3, RefreshCw, AlertTriangle, CheckCircle, Info, Zap } from 'lucide-react';
 import { usePipeline } from '@/contexts/PipelineContext';
+import { usePipelineStep } from '@/hooks/usePipelines';
 import { useToast } from '@/hooks/use-toast';
 import Plot from 'react-plotly.js';
 
@@ -22,11 +23,43 @@ const TrainTestSplit = () => {
   const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
+  // Carregar dados salvos da etapa de divisão do backend
+  const { data: stepData } = usePipelineStep(pipelineData.pipelineId || 0, 'divisao');
+  
   const [useValidation, setUseValidation] = useState(true);
   const [trainSize, setTrainSize] = useState(70);
   const [validationSize, setValidationSize] = useState(15);
   const [isProcessing, setIsProcessing] = useState(false);
   const [autoOptimize, setAutoOptimize] = useState(false);
+
+  // Carregar valores salvos do pipeline quando componente é montado
+  useEffect(() => {
+    if (pipelineData.trainSize !== undefined) {
+      setTrainSize(pipelineData.trainSize);
+    }
+    if (pipelineData.validationSize !== undefined) {
+      setValidationSize(pipelineData.validationSize);
+    }
+    if (pipelineData.useValidation !== undefined) {
+      setUseValidation(pipelineData.useValidation);
+    }
+  }, [pipelineData.trainSize, pipelineData.validationSize, pipelineData.useValidation]);
+
+  // Carregar valores salvos do backend quando disponíveis
+  useEffect(() => {
+    if (stepData?.data) {
+      const data = stepData.data;
+      if (data.train_size !== undefined) {
+        setTrainSize(Math.round(data.train_size * 100));
+      }
+      if (data.validation_size !== undefined) {
+        setValidationSize(Math.round(data.validation_size * 100));
+      }
+      if (data.validation_size !== undefined) {
+        setUseValidation(data.validation_size > 0);
+      }
+    }
+  }, [stepData]);
 
   // Calcular tamanho do teste automaticamente
   const testSize = useMemo(() => {

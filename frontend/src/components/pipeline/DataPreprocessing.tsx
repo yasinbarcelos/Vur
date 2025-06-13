@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Settings, BarChart3, Activity, TrendingUp, RefreshCw, Eye, EyeOff, Zap, Info, AlertTriangle } from 'lucide-react';
 import Plot from 'react-plotly.js';
 import { usePipeline } from '@/contexts/PipelineContext';
+import { usePipelineStep } from '@/hooks/usePipelines';
 import { useToast } from '@/hooks/use-toast';
 import PreprocessingConfig from './PreprocessingConfig';
 import { PreprocessingConfig as ConfigType } from '@/hooks/usePreprocessing';
@@ -47,6 +48,9 @@ const DataPreprocessing = () => {
   const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
+  // Carregar dados salvos da etapa de preprocessing do backend
+  const { data: stepData } = usePipelineStep(pipelineData.pipelineId || 0, 'preprocessing');
+  
   const [config, setConfig] = useState<PreprocessingConfig>({
     normalization: 'minmax',
     transformation: 'difference',
@@ -66,6 +70,36 @@ const DataPreprocessing = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [preview, setPreview] = useState<PreprocessingPreview | null>(null);
   const [showPreview, setShowPreview] = useState(true);
+
+  // Carregar valores salvos do contexto quando componente é montado
+  useEffect(() => {
+    if (pipelineData.preprocessingConfig) {
+      const savedConfig = pipelineData.preprocessingConfig;
+      setConfig(prev => ({
+        ...prev,
+        ...savedConfig
+      }));
+    }
+  }, [pipelineData.preprocessingConfig]);
+
+  // Carregar valores salvos do backend quando disponíveis
+  useEffect(() => {
+    if (stepData?.data) {
+      const data = stepData.data;
+      setConfig(prev => ({
+        ...prev,
+        normalization: data.normalization || prev.normalization,
+        transformation: data.transformation || prev.transformation,
+        outlierDetection: data.outlier_detection !== undefined ? data.outlier_detection : prev.outlierDetection,
+        outlierMethod: data.outlier_method || prev.outlierMethod,
+        outlierThreshold: data.outlier_threshold !== undefined ? data.outlier_threshold : prev.outlierThreshold,
+        missingValueHandling: data.missing_value_handling || prev.missingValueHandling,
+        seasonalDecomposition: data.seasonal_decomposition !== undefined ? data.seasonal_decomposition : prev.seasonalDecomposition,
+        smoothing: data.smoothing !== undefined ? data.smoothing : prev.smoothing,
+        smoothingWindow: data.smoothing_window !== undefined ? data.smoothing_window : prev.smoothingWindow
+      }));
+    }
+  }, [stepData]);
 
   // Obter dados originais
   const originalData = pipelineData.data || [];

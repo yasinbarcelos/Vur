@@ -238,6 +238,8 @@ export const PipelineProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     try {
+      console.log(`Updating step ${stepName} with data:`, stepData);
+      
       // Mapear nomes de etapas para endpoints correspondentes
       const stepEndpoints: { [key: string]: string } = {
         'upload': 'updateUploadStep',
@@ -254,9 +256,15 @@ export const PipelineProvider: React.FC<{ children: ReactNode }> = ({ children }
         return;
       }
 
-      // Fazer chamada para API
-      await (api.pipelines as any)[endpointMethod](pipelineData.pipelineId.toString(), stepData);
-      console.log(`Step ${stepName} data updated successfully`);
+      // Fazer chamada para API usando a estrutura correta
+      const apiMethod = (api.pipelines as any)[endpointMethod];
+      if (typeof apiMethod === 'function') {
+        await apiMethod(pipelineData.pipelineId.toString(), stepData);
+        console.log(`Step ${stepName} data updated successfully`);
+      } else {
+        console.error(`API method ${endpointMethod} is not a function`);
+        throw new Error(`Invalid API method: ${endpointMethod}`);
+      }
     } catch (error) {
       console.error(`Error updating step ${stepName} data:`, error);
       throw error;
@@ -271,6 +279,7 @@ export const PipelineProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
 
     try {
+      console.log(`Completing step ${stepName} for pipeline ${pipelineData.pipelineId}`);
       await api.pipelines.completeStep(pipelineData.pipelineId.toString(), stepName);
       console.log(`Step ${stepName} completed successfully`);
     } catch (error) {

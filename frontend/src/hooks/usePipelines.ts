@@ -334,7 +334,9 @@ export const usePipelineStep = (pipelineId: number, stepName: string) => {
   return useQuery({
     queryKey: pipelineKeys.step(pipelineId, stepName),
     queryFn: async (): Promise<any> => {
+      console.log(`usePipelineStep - Fetching: /pipelines/${pipelineId}/steps/${stepName}`);
       const response = await api.get(`/pipelines/${pipelineId}/steps/${stepName}`);
+      console.log(`usePipelineStep - Response for ${stepName}:`, response);
       return response;
     },
     enabled: !!pipelineId && !!stepName,

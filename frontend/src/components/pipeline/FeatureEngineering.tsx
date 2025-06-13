@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea } from 'recharts';
 import { usePipeline } from '@/contexts/PipelineContext';
+import { usePipelineStep } from '@/hooks/usePipelines';
 import { useToast } from '@/hooks/use-toast';
 import { Zap, Calendar, Check, TrendingUp, BarChart3, Eye, Settings } from 'lucide-react';
 
@@ -33,6 +34,9 @@ const FeatureEngineering = () => {
   const { pipelineData, updatePipelineData, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
+  // Carregar dados salvos da etapa de features do backend
+  const { data: stepData } = usePipelineStep(pipelineData.pipelineId || 0, 'features');
+  
   const [config, setConfig] = useState<FeatureConfig>({
     inputSeries: [],
     useAllInputSeries: false,
@@ -42,6 +46,92 @@ const FeatureEngineering = () => {
     inputWindowSize: 35,
     windowSizeMethod: 'acf',
   });
+
+  // Estado para controlar se já tentamos carregar dados salvos
+  const [hasLoadedSavedData, setHasLoadedSavedData] = useState(false);
+  const [hasCheckedContext, setHasCheckedContext] = useState(false);
+  const [hasCheckedBackend, setHasCheckedBackend] = useState(false);
+
+  // Carregar valores salvos do contexto quando componente é montado
+  React.useEffect(() => {
+    console.log('Features - Loading from context:', pipelineData.features);
+    if (pipelineData.features && pipelineData.features.length > 0) {
+      // Extrair features reais dos nomes salvos (remove 'feature_' prefix)
+      const savedInputSeries = pipelineData.features
+        .map(f => f.replace('feature_', ''))
+        .filter(f => f);
+      
+      if (savedInputSeries.length > 0) {
+        console.log('Features - Setting inputSeries from context:', savedInputSeries);
+        setConfig(prev => ({
+          ...prev,
+          inputSeries: savedInputSeries,
+          targetSeries: savedInputSeries // Também definir target series
+        }));
+        setHasLoadedSavedData(true);
+      }
+    }
+    setHasCheckedContext(true);
+  }, [pipelineData.features]);
+
+  // Carregar valores salvos do backend quando disponíveis
+  React.useEffect(() => {
+    // Aguardar um pouco para garantir que o contexto foi processado primeiro
+    const timer = setTimeout(() => {
+      console.log('Features - stepData received:', stepData);
+      if (stepData?.data) {
+        const data = stepData.data;
+        console.log('Features - Processing backend data:', data);
+        console.log('Features - Backend data keys:', Object.keys(data));
+        console.log('Features - Backend data values:', Object.values(data));
+        
+        // Verificar se há dados válidos no backend
+        const hasValidBackendData = data.selected_features?.length > 0 || 
+                                    data.feature_engineering?.input_series?.length > 0 ||
+                                    data.forecast_horizon !== undefined ||
+                                    data.input_window_size !== undefined;
+        
+        console.log('Features - Has valid backend data:', hasValidBackendData);
+        console.log('Features - Current config before backend:', config);
+        
+        if (hasValidBackendData) {
+          const newConfig = {
+            inputSeries: data.selected_features || data.feature_engineering?.input_series || config.inputSeries,
+            targetSeries: data.feature_engineering?.target_series || config.targetSeries,
+            useAllInputSeries: data.feature_engineering?.use_all_input_series !== undefined ? 
+              data.feature_engineering.use_all_input_series : config.useAllInputSeries,
+            predictAllSeries: data.feature_engineering?.predict_all_series !== undefined ? 
+              data.feature_engineering.predict_all_series : config.predictAllSeries,
+            forecastHorizon: data.forecast_horizon !== undefined ? data.forecast_horizon : config.forecastHorizon,
+            inputWindowSize: data.input_window_size !== undefined ? data.input_window_size : config.inputWindowSize,
+            windowSizeMethod: data.feature_engineering?.window_size_method || config.windowSizeMethod
+          };
+          
+          console.log('Features - Setting config from backend:', newConfig);
+          setConfig(newConfig);
+          setHasLoadedSavedData(true);
+        } else {
+          console.log('Features - Backend data is empty, keeping current config');
+          // Se já temos dados válidos no config atual, não marcar como "não carregado"
+          if (config.inputSeries.length > 0) {
+            console.log('Features - Current config has data, marking as loaded');
+            setHasLoadedSavedData(true);
+          }
+        }
+      }
+      setHasCheckedBackend(true);
+    }, 100); // Aguardar 100ms
+
+    return () => clearTimeout(timer);
+  }, [stepData]);
+
+  // Controlar quando terminar de verificar ambas as fontes
+  React.useEffect(() => {
+    if (hasCheckedContext && hasCheckedBackend && !hasLoadedSavedData) {
+      console.log('Features - Both sources checked, no saved data found');
+      setHasLoadedSavedData(true); // Permite auto-inicialização
+    }
+  }, [hasCheckedContext, hasCheckedBackend, hasLoadedSavedData]);
 
   // Obter colunas numéricas disponíveis
   const availableSeries = useMemo(() => {
@@ -288,16 +378,31 @@ const FeatureEngineering = () => {
     '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'
   ];
 
-  // Inicializar séries se ainda não foram definidas
+  // Inicializar séries se ainda não foram definidas E não há dados salvos
   React.useEffect(() => {
-    if (availableSeries.length > 0 && config.inputSeries.length === 0) {
-      setConfig(prev => ({
-        ...prev,
+    console.log('Features - Auto-initializing check:', {
+      hasCheckedContext,
+      hasCheckedBackend,
+      hasLoadedSavedData,
+      availableSeries,
+      currentInputSeries: config.inputSeries,
+      targetColumn: pipelineData.targetColumn
+    });
+    
+    // Só inicializar se verificamos ambas as fontes E não carregamos dados salvos E não há dados atuais E há séries disponíveis
+    if (hasCheckedContext && hasCheckedBackend && !hasLoadedSavedData && availableSeries.length > 0 && config.inputSeries.length === 0) {
+      const initialConfig = {
         inputSeries: [pipelineData.targetColumn || availableSeries[0]],
         targetSeries: [pipelineData.targetColumn || availableSeries[0]]
+      };
+      
+      console.log('Features - Auto-initializing series:', initialConfig);
+      setConfig(prev => ({
+        ...prev,
+        ...initialConfig
       }));
     }
-  }, [availableSeries, config.inputSeries.length, pipelineData.targetColumn]);
+  }, [hasCheckedContext, hasCheckedBackend, hasLoadedSavedData, availableSeries, config.inputSeries.length, pipelineData.targetColumn]);
 
   const handleInputSeriesChange = (series: string, checked: boolean) => {
     setConfig(prev => ({
@@ -348,6 +453,9 @@ const FeatureEngineering = () => {
   };
 
   const handleContinue = async () => {
+    console.log('Features - handleContinue called with config:', config);
+    console.log('Features - pipelineData.pipelineId:', pipelineData.pipelineId);
+    
     // Validações
     if (config.inputSeries.length === 0) {
       toast({
@@ -369,9 +477,11 @@ const FeatureEngineering = () => {
 
     try {
       // Salvar configuração localmente
-      updatePipelineData({ 
+      const localData = { 
         features: config.inputSeries.map(s => `feature_${s}`)
-      });
+      };
+      console.log('Features - Saving to local context:', localData);
+      updatePipelineData(localData);
 
       // Enviar dados para a API se há pipeline ID
       if (pipelineData.pipelineId) {
@@ -397,8 +507,12 @@ const FeatureEngineering = () => {
           ]
         };
 
+        console.log('Features - Sending to backend:', stepData);
         await updateStepData('features', stepData);
+        console.log('Features - Backend update successful');
+        
         await completeStepRemote('features');
+        console.log('Features - Step completion successful');
       }
       
       completeStep('features');
