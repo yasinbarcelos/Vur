@@ -186,6 +186,25 @@ class ApiClient {
     export: (id: string) => this.get(`/pipelines/${id}/export`),
     
     import: (file: File) => this.uploadFile('/pipelines/import', file),
+
+    // Novos endpoints organizados por etapas
+    getFlow: (id: string) => this.get(`/pipelines/${id}/flow`),
+    
+    updateUploadStep: (id: string, data: any) => this.post(`/pipelines/${id}/steps/upload`, data),
+    
+    updatePreviewStep: (id: string, data: any) => this.post(`/pipelines/${id}/steps/preview`, data),
+    
+    updateDivisaoStep: (id: string, data: any) => this.post(`/pipelines/${id}/steps/divisao`, data),
+    
+    updatePreprocessingStep: (id: string, data: any) => this.post(`/pipelines/${id}/steps/preprocessing`, data),
+    
+    updateFeaturesStep: (id: string, data: any) => this.post(`/pipelines/${id}/steps/features`, data),
+    
+    updateModeloStep: (id: string, data: any) => this.post(`/pipelines/${id}/steps/modelo`, data),
+    
+    completeStep: (id: string, stepName: string) => this.post(`/pipelines/${id}/complete-step/${stepName}`, {}),
+    
+    getStepData: (id: string, stepName: string) => this.get(`/pipelines/${id}/steps/${stepName}`),
   };
 
   // Model endpoints

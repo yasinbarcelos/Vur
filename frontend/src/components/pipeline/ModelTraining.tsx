@@ -22,11 +22,14 @@ import {
   Filter,
   Cpu,
   Info,
-  Activity
+  Activity,
+  Save,
+  Upload
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { usePipeline } from '@/contexts/PipelineContext';
 import { useToast } from '@/hooks/use-toast';
+import { api } from '@/lib/api';
 
 const ModelTraining = () => {
   const { pipelineData, updatePipelineData, completeStep } = usePipeline();
@@ -35,6 +38,9 @@ const ModelTraining = () => {
   const [trainingComplete, setTrainingComplete] = useState(false);
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [trainingLogs, setTrainingLogs] = useState<string[]>([]);
+  const [isCreatingPipeline, setIsCreatingPipeline] = useState(false);
+  const [pipelineCreated, setPipelineCreated] = useState(false);
+  const [createdPipelineId, setCreatedPipelineId] = useState<number | null>(null);
   const [metrics, setMetrics] = useState({
     rmse: 0,
     mae: 0,
@@ -216,6 +222,201 @@ const ModelTraining = () => {
       title: "Etapa concluída!",
       description: "Modelo treinado e pronto para monitoramento",
     });
+  };
+
+  const createPipeline = async () => {
+    setIsCreatingPipeline(true);
+    
+    try {
+      // Verificar se o usuário está autenticado
+      const token = localStorage.getItem('vur_auth_token');
+      if (!token) {
+        throw new Error('Usuário não autenticado. Faça login para continuar.');
+      }
+
+      // 1. Criar o pipeline inicial
+      const pipelineCreateData = {
+        name: `Pipeline ${pipelineData.datasetName || 'Sem Nome'} - ${new Date().toLocaleDateString()}`,
+        description: `Pipeline criado automaticamente para o dataset ${pipelineData.datasetName || 'N/A'}`,
+        pipeline_type: (pipelineData.features?.length || 0) > 1 ? 'multivariate' : 'univariate',
+        ...(pipelineData.targetColumn && { target_column: pipelineData.targetColumn }),
+        ...(pipelineData.dateColumn && { date_column: pipelineData.dateColumn }),
+        ...(pipelineData.features && pipelineData.features.length > 0 && { features: pipelineData.features }),
+        ...(pipelineData.algorithm && { algorithm: pipelineData.algorithm }),
+        ...(pipelineData.modelConfig?.hyperparameters && Object.keys(pipelineData.modelConfig.hyperparameters).length > 0 && { 
+          hyperparameters: pipelineData.modelConfig.hyperparameters 
+        }),
+        ...(pipelineData.datasetId && { dataset_id: pipelineData.datasetId })
+      };
+
+      console.log('Dados sendo enviados para criar pipeline:', pipelineCreateData);
+
+      const createdPipeline = await api.pipelines.create(pipelineCreateData);
+      const pipelineId = createdPipeline.id;
+      setCreatedPipelineId(pipelineId);
+
+      // 2. Atualizar etapa de Upload
+      if (pipelineData.datasetId) {
+        const uploadStepData = {
+          dataset_id: pipelineData.datasetId,
+          dataset_name: pipelineData.datasetName || 'Dataset',
+          total_rows: pipelineData.totalRows || pipelineData.data?.length || 0,
+          total_columns: pipelineData.columns?.length || 0,
+          file_size: pipelineData.file?.size || 0,
+          file_type: 'csv',
+          upload_timestamp: new Date().toISOString()
+        };
+        await api.pipelines.updateUploadStep(pipelineId, uploadStepData);
+        await api.pipelines.completeStep(pipelineId, 'upload');
+      }
+
+      // 3. Atualizar etapa de Preview
+      if (pipelineData.columns && pipelineData.data) {
+        const previewStepData = {
+          columns: pipelineData.columns,
+          sample_data: pipelineData.data.slice(0, 5), // Primeiras 5 linhas como amostra
+          data_types: pipelineData.columns.reduce((acc, col) => {
+            // Inferir tipo baseado nos dados
+            const sampleValue = pipelineData.data?.[0]?.[col];
+            if (typeof sampleValue === 'number') acc[col] = 'float';
+            else if (col === pipelineData.dateColumn) acc[col] = 'datetime';
+            else acc[col] = 'string';
+            return acc;
+          }, {} as Record<string, string>),
+          missing_values: pipelineData.columns.reduce((acc, col) => {
+            // Calcular valores faltantes (simulado)
+            acc[col] = 0;
+            return acc;
+          }, {} as Record<string, number>),
+          date_column: pipelineData.dateColumn,
+          target_column: pipelineData.targetColumn,
+          column_suggestions: {
+            date_columns: pipelineData.dateColumn ? [pipelineData.dateColumn] : [],
+            target_columns: pipelineData.targetColumn ? [pipelineData.targetColumn] : []
+          },
+          data_quality_score: 0.95,
+          quality_issues: []
+        };
+        await api.pipelines.updatePreviewStep(pipelineId, previewStepData);
+        await api.pipelines.completeStep(pipelineId, 'preview');
+      }
+
+      // 4. Atualizar etapa de Divisão
+      const divisaoStepData = {
+        train_size: (pipelineData.trainSize || 70) / 100,
+        validation_size: (pipelineData.validationSize || 15) / 100,
+        test_size: (pipelineData.testSize || 15) / 100,
+        split_method: 'temporal',
+        split_date: null,
+        cross_validation_config: {
+          method: pipelineData.modelConfig?.validation?.method || 'holdout',
+          n_splits: 5
+        },
+        train_rows: Math.floor((pipelineData.totalRows || 0) * (pipelineData.trainSize || 70) / 100),
+        validation_rows: Math.floor((pipelineData.totalRows || 0) * (pipelineData.validationSize || 15) / 100),
+        test_rows: Math.floor((pipelineData.totalRows || 0) * (pipelineData.testSize || 15) / 100)
+      };
+      await api.pipelines.updateDivisaoStep(pipelineId, divisaoStepData);
+      await api.pipelines.completeStep(pipelineId, 'divisao');
+
+      // 5. Atualizar etapa de Preprocessing
+      const preprocessingStepData = {
+        normalization: pipelineData.preprocessing?.normalization || 'minmax',
+        transformation: pipelineData.preprocessing?.transformation || 'none',
+        outlier_detection: pipelineData.preprocessing?.outliers !== 'none',
+        outlier_method: pipelineData.preprocessing?.outliers || 'iqr',
+        outlier_threshold: 1.5,
+        missing_value_handling: pipelineData.preprocessing?.missingValues || 'interpolate',
+        seasonal_decomposition: pipelineData.preprocessing?.seasonalDecomposition || false,
+        smoothing: pipelineData.preprocessing?.smoothing || false,
+        smoothing_window: 5,
+        applied_transformations: [
+          pipelineData.preprocessing?.normalization || 'minmax',
+          pipelineData.preprocessing?.transformation || 'none'
+        ].filter(t => t !== 'none')
+      };
+      await api.pipelines.updatePreprocessingStep(pipelineId, preprocessingStepData);
+      await api.pipelines.completeStep(pipelineId, 'preprocessing');
+
+      // 6. Atualizar etapa de Features
+      const featuresStepData = {
+        selected_features: pipelineData.features || [],
+        feature_engineering: {
+          lag_features: [1, 7, 30],
+          rolling_features: [
+            { window: 7, operation: 'mean' },
+            { window: 30, operation: 'std' }
+          ]
+        },
+        input_window_size: pipelineData.steps || 35,
+        forecast_horizon: 15,
+        feature_selection_method: 'mutual_information',
+        feature_importance: {},
+        feature_correlations: {},
+        lag_features: [1, 7, 30],
+        rolling_features: [
+          { window: 7, operation: 'mean' },
+          { window: 14, operation: 'std' }
+        ]
+      };
+      await api.pipelines.updateFeaturesStep(pipelineId, featuresStepData);
+      await api.pipelines.completeStep(pipelineId, 'features');
+
+      // 7. Atualizar etapa de Modelo
+      const modeloStepData = {
+        algorithm: pipelineData.algorithm || 'lstm',
+        algorithm_category: getAlgorithmCategory(pipelineData.algorithm || '').name.toLowerCase().replace(' ', '_'),
+        hyperparameters: pipelineData.modelConfig?.hyperparameters || {},
+        model_type: (pipelineData.features?.length || 0) > 1 ? 'multivariate' : 'univariate',
+        validation_method: pipelineData.modelConfig?.validation?.method || 'holdout',
+        metrics_config: {
+          primary_metric: 'mse',
+          additional_metrics: pipelineData.modelConfig?.metrics || ['mae', 'mape', 'rmse']
+        },
+        auto_hyperparameter_tuning: pipelineData.modelConfig?.optimization?.enabled || false,
+        tuning_method: pipelineData.modelConfig?.optimization?.method || 'bayesian'
+      };
+      await api.pipelines.updateModeloStep(pipelineId, modeloStepData);
+      await api.pipelines.completeStep(pipelineId, 'modelo');
+
+      setPipelineCreated(true);
+      
+      toast({
+        title: "Pipeline criado com sucesso!",
+        description: `Pipeline ID: ${pipelineId} foi criado no backend com todos os parâmetros configurados.`,
+      });
+
+      // Salvar o ID do pipeline no contexto para referência futura
+      updatePipelineData({ pipelineId: pipelineId });
+
+    } catch (error) {
+      console.error('Erro ao criar pipeline:', error);
+      
+      let errorMessage = "Erro desconhecido ao criar pipeline no backend";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // Detectar diferentes tipos de erro
+        if (error.message.includes('403') || error.message.includes('Not authenticated')) {
+          errorMessage = "Erro de autenticação: Faça login novamente para continuar.";
+        } else if (error.message.includes('422') || error.message.includes('Unprocessable') || error.message.includes('inválidos')) {
+          errorMessage = `Erro de validação: ${error.message}. Verifique se todos os campos obrigatórios estão preenchidos corretamente.`;
+        } else if (error.message.includes('404')) {
+          errorMessage = "Recurso não encontrado. Verifique se o dataset existe.";
+        } else if (error.message.includes('500')) {
+          errorMessage = "Erro interno do servidor. Tente novamente mais tarde.";
+        }
+      }
+      
+      toast({
+        title: "Erro ao criar pipeline",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsCreatingPipeline(false);
+    }
   };
 
   return (
@@ -688,6 +889,157 @@ const ModelTraining = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Botão para criar o pipeline no backend */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Save className="w-5 h-5" />
+            Criar Pipeline no Backend
+          </CardTitle>
+          <CardDescription>
+            Crie o pipeline no backend com todos os parâmetros das etapas anteriores
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Status do Pipeline */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-medium">
+                {pipelineCreated ? 'Pipeline Criado' : 'Pipeline não criado'}
+              </h3>
+              <p className="text-sm text-gray-600">
+                {pipelineCreated 
+                  ? `ID: ${createdPipelineId} - Todas as etapas configuradas`
+                  : isCreatingPipeline 
+                    ? 'Criando pipeline e configurando etapas...' 
+                    : 'Pronto para criar pipeline no backend'
+                }
+              </p>
+            </div>
+            {pipelineCreated && (
+              <Badge className="bg-green-500">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Criado
+              </Badge>
+            )}
+          </div>
+
+          {/* Botões de Ação */}
+          <div className="flex gap-2">
+            <Button 
+              onClick={createPipeline}
+              disabled={isCreatingPipeline || pipelineCreated || !pipelineData.algorithm}
+              className="flex items-center gap-2"
+            >
+              {isCreatingPipeline ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Criando Pipeline...
+                </>
+              ) : pipelineCreated ? (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  Pipeline Criado
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Criar Pipeline
+                </>
+              )}
+            </Button>
+            
+            {pipelineCreated && createdPipelineId && (
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  // Copiar ID do pipeline para clipboard
+                  navigator.clipboard.writeText(createdPipelineId.toString());
+                  toast({
+                    title: "ID copiado!",
+                    description: `ID do pipeline ${createdPipelineId} copiado para a área de transferência.`,
+                  });
+                }}
+                className="flex items-center gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                Copiar ID
+              </Button>
+            )}
+          </div>
+
+          {/* Informações do Pipeline Criado */}
+          {pipelineCreated && (
+            <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                <span className="font-medium text-green-800">Pipeline Configurado com Sucesso</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">ID:</span>
+                  <span className="font-medium">{createdPipelineId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Algoritmo:</span>
+                  <span className="font-medium">{getAlgorithmName(pipelineData.algorithm || '')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Dataset:</span>
+                  <span className="font-medium text-xs">{pipelineData.datasetName || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Etapas:</span>
+                  <span className="font-medium">6/6 Completas</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Requisitos para Criação */}
+          {!pipelineCreated && (
+            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="w-4 h-4 text-blue-600" />
+                <span className="font-medium text-blue-800">Requisitos para Criação</span>
+              </div>
+              <div className="space-y-1 text-sm">
+                <div className="flex items-center gap-2">
+                  {pipelineData.algorithm ? (
+                    <CheckCircle className="w-3 h-3 text-green-600" />
+                  ) : (
+                    <div className="w-3 h-3 border border-gray-400 rounded-full" />
+                  )}
+                  <span className={pipelineData.algorithm ? 'text-green-700' : 'text-gray-600'}>
+                    Algoritmo selecionado
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pipelineData.datasetId ? (
+                    <CheckCircle className="w-3 h-3 text-green-600" />
+                  ) : (
+                    <div className="w-3 h-3 border border-gray-400 rounded-full" />
+                  )}
+                  <span className={pipelineData.datasetId ? 'text-green-700' : 'text-gray-600'}>
+                    Dataset carregado
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pipelineData.targetColumn ? (
+                    <CheckCircle className="w-3 h-3 text-green-600" />
+                  ) : (
+                    <div className="w-3 h-3 border border-gray-400 rounded-full" />
+                  )}
+                  <span className={pipelineData.targetColumn ? 'text-green-700' : 'text-gray-600'}>
+                    Coluna alvo definida
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

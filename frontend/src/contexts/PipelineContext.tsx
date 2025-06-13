@@ -4,6 +4,7 @@ export interface PipelineData {
   file?: File;
   datasetId?: number;
   datasetName?: string;
+  pipelineId?: number;
   data?: any[];
   columns?: string[];
   targetColumn?: string;
