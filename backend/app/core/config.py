@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     
     # CORS
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000",
+        default="http://localhost:3000,http://localhost:5173,http://localhost:8080,http://127.0.0.1:3000,http://127.0.0.1:8080",
         description="Allowed CORS origins (comma-separated)"
     )
     
@@ -99,6 +99,57 @@ class Settings(BaseSettings):
         description="Default confidence interval"
     )
     
+    @validator("MAX_FILE_SIZE", pre=True)
+    def parse_max_file_size(cls, v):
+        """Parse MAX_FILE_SIZE, removing any comments."""
+        if isinstance(v, str):
+            # Remove comments and whitespace
+            v = v.split('#')[0].strip()
+            if v:
+                return int(v)
+            return 10 * 1024 * 1024  # Default 10MB
+        return v
+    
+    @validator("MAX_TRAINING_TIME", pre=True)
+    def parse_max_training_time(cls, v):
+        """Parse MAX_TRAINING_TIME, removing any comments."""
+        if isinstance(v, str):
+            v = v.split('#')[0].strip()
+            if v:
+                return int(v)
+            return 3600  # Default 1 hour
+        return v
+    
+    @validator("RATE_LIMIT_PER_MINUTE", pre=True)
+    def parse_rate_limit(cls, v):
+        """Parse RATE_LIMIT_PER_MINUTE, removing any comments."""
+        if isinstance(v, str):
+            v = v.split('#')[0].strip()
+            if v:
+                return int(v)
+            return 60  # Default
+        return v
+    
+    @validator("MAX_PREDICTION_HORIZON", pre=True)
+    def parse_max_prediction_horizon(cls, v):
+        """Parse MAX_PREDICTION_HORIZON, removing any comments."""
+        if isinstance(v, str):
+            v = v.split('#')[0].strip()
+            if v:
+                return int(v)
+            return 365  # Default
+        return v
+    
+    @validator("ACCESS_TOKEN_EXPIRE_MINUTES", pre=True)
+    def parse_access_token_expire(cls, v):
+        """Parse ACCESS_TOKEN_EXPIRE_MINUTES, removing any comments."""
+        if isinstance(v, str):
+            v = v.split('#')[0].strip()
+            if v:
+                return int(v)
+            return 30  # Default
+        return v
+    
     @validator("ENVIRONMENT")
     def validate_environment(cls, v):
         """Validate environment value."""
@@ -119,9 +170,17 @@ class Settings(BaseSettings):
         """Get CORS origins as a list."""
         if isinstance(self.ALLOWED_ORIGINS, str):
             if not self.ALLOWED_ORIGINS.strip():
-                return ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000"]
-            return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
-        return self.ALLOWED_ORIGINS
+                origins = ["http://localhost:3000", "http://localhost:5173", "http://localhost:8080", "http://127.0.0.1:3000", "http://127.0.0.1:8080", "*"]
+            else:
+                origins = [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
+        else:
+            origins = self.ALLOWED_ORIGINS
+        
+        # In development, allow 'null' origin for local HTML files
+        if self.is_development and "null" not in origins:
+            origins.append("null")
+        
+        return origins
     
     @validator("ALLOWED_HOSTS", pre=True)
     def parse_allowed_hosts(cls, v):

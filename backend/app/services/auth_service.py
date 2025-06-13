@@ -122,26 +122,51 @@ class AuthService:
     
     @staticmethod
     async def get_current_active_user(
-        current_user: User = Depends(get_current_user)
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+        db: AsyncSession = Depends(get_async_session)
     ) -> User:
         """
-        Get current active user.
+        Get current active user from JWT token.
         
         Args:
-            current_user: Current user from token
+            credentials: HTTP Bearer credentials
+            db: Database session
             
         Returns:
             Active user
             
         Raises:
-            HTTPException: If user is inactive
+            HTTPException: If token is invalid or user not found/inactive
         """
-        if not current_user.is_active:
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+        # Verify token
+        token_data = verify_token(credentials.credentials)
+        if token_data is None:
+            raise credentials_exception
+        
+        username = token_data.get("sub")
+        user_id = token_data.get("user_id")
+        
+        if username is None or user_id is None:
+            raise credentials_exception
+        
+        # Get user from database
+        user = await UserService.get_user_by_id(db, user_id)
+        if user is None:
+            raise credentials_exception
+        
+        if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Inactive user"
             )
-        return current_user
+        
+        return user
     
     @staticmethod
     async def get_current_superuser(

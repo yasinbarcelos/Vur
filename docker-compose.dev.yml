@@ -41,7 +41,7 @@ services:
       HOT_RELOAD: true
       
       # CORS
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000
+      ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://localhost:8080"
       
       # File uploads
       MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10485760}

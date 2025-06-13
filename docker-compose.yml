@@ -81,7 +81,7 @@ services:
     container_name: vur_frontend
     restart: unless-stopped
     environment:
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000/api/v1}
       - VITE_APP_NAME=${VITE_APP_NAME:-VUR - Time Series Forecasting}
       - VITE_ENVIRONMENT=${ENVIRONMENT:-development}
     ports:

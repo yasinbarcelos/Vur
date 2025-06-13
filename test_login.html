@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Login - VUR</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 Teste de Login - VUR Backend</h1>
+    
+    <div class="form-group">
+        <label for="username">Username:</label>
+        <input type="text" id="username" value="admin" placeholder="Digite o username">
+    </div>
+    
+    <div class="form-group">
+        <label for="password">Password:</label>
+        <input type="password" id="password" value="Admin123" placeholder="Digite a senha">
+    </div>
+    
+    <button onclick="testLogin()">🚀 Testar Login</button>
+    <button onclick="testRegister()">📝 Testar Registro</button>
+    <button onclick="clearResult()">🧹 Limpar</button>
+    
+    <div id="result"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api/v1';
+        
+        async function testLogin() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                showResult('❌ Por favor, preencha username e password', 'error');
+                return;
+            }
+            
+            try {
+                showResult('🔄 Fazendo login...', 'info');
+                
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`✅ Login realizado com sucesso!
+                    
+Status: ${response.status}
+Token: ${data.access_token.substring(0, 50)}...
+Expires in: ${data.expires_in} segundos
+Token type: ${data.token_type}`, 'success');
+                } else {
+                    showResult(`❌ Erro no login:
+                    
+Status: ${response.status}
+Erro: ${data.message || data.detail || 'Erro desconhecido'}
+Detalhes: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Erro de conexão:
+                
+${error.message}
+                
+Verifique se o backend está rodando em http://localhost:8000`, 'error');
+            }
+        }
+        
+        async function testRegister() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                showResult('❌ Por favor, preencha username e password', 'error');
+                return;
+            }
+            
+            try {
+                showResult('🔄 Registrando usuário...', 'info');
+                
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: `${username}@test.com`,
+                        username: username,
+                        password: password,
+                        full_name: `Test User ${username}`
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`✅ Usuário registrado com sucesso!
+                    
+Status: ${response.status}
+ID: ${data.id}
+Username: ${data.username}
+Email: ${data.email}
+Nome: ${data.full_name}
+Ativo: ${data.is_active}`, 'success');
+                } else {
+                    showResult(`❌ Erro no registro:
+                    
+Status: ${response.status}
+Erro: ${data.message || data.detail || 'Erro desconhecido'}
+Detalhes: ${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Erro de conexão:
+                
+${error.message}`, 'error');
+            }
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = message;
+            resultDiv.className = `result ${type}`;
+        }
+        
+        function clearResult() {
+            document.getElementById('result').textContent = '';
+            document.getElementById('result').className = '';
+        }
+        
+        // Teste automático ao carregar a página
+        window.onload = function() {
+            showResult('🌐 Página carregada. Clique em "Testar Login" para começar.', 'info');
+        };
+    </script>
+</body>
+</html> 

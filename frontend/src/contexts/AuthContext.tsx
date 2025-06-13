@@ -144,7 +144,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const tokenToUse = authToken || token;
     if (!tokenToUse) throw new Error('No token available');
 
-    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+    const url = `${API_BASE_URL}/auth/me`;
+    console.log('🔍 Fazendo fetch para:', url);
+    console.log('🔍 API_BASE_URL:', API_BASE_URL);
+
+    const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${tokenToUse}`,
         'Content-Type': 'application/json',

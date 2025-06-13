@@ -13,7 +13,7 @@ export const DEV_CONFIG = {
   defaultCredentials: {
     login: {
       username: import.meta.env.VITE_DEV_USERNAME || 'testuser',
-      password: import.meta.env.VITE_DEV_PASSWORD || 'Test123456',
+      password: import.meta.env.VITE_DEV_PASSWORD || 'TestPassword123',
     },
     register: {
       email: import.meta.env.VITE_DEV_EMAIL || 'test@example.com',

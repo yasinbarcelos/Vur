@@ -3,17 +3,42 @@ import { Navigate } from 'react-router-dom';
 import { Brain, BarChart3, TrendingUp, Database, Settings, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import LoginForm from '@/components/auth/LoginForm';
+import SimpleLoginForm from '@/components/auth/SimpleLoginForm';
 import RegisterForm from '@/components/auth/RegisterForm';
 import ConnectionTest from '@/components/debug/ConnectionTest';
 import ResetSystem from '@/components/debug/ResetSystem';
-import { useAuth } from '@/contexts/AuthContext';
 
 const AuthPage: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [showConnectionTest, setShowConnectionTest] = useState(false);
   const [showResetSystem, setShowResetSystem] = useState(false);
-  const { isAuthenticated, isLoading } = useAuth();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Verificar autenticação simples
+  useEffect(() => {
+    const checkAuth = () => {
+      const token = localStorage.getItem('vur_auth_token');
+      const tokenExpiry = localStorage.getItem('vur_token_expiry');
+      
+      if (token && tokenExpiry) {
+        const expiryTime = parseInt(tokenExpiry);
+        const now = Date.now();
+        
+        if (now < expiryTime) {
+          setIsAuthenticated(true);
+        } else {
+          // Token expirado, limpar
+          localStorage.removeItem('vur_auth_token');
+          localStorage.removeItem('vur_token_expiry');
+        }
+      }
+      
+      setIsLoading(false);
+    };
+
+    checkAuth();
+  }, []);
 
   // Redirecionar se já estiver autenticado
   if (isAuthenticated) {
@@ -108,7 +133,7 @@ const AuthPage: React.FC = () => {
 
           {/* Formulários */}
           {isLogin ? (
-            <LoginForm onSwitchToRegister={() => setIsLogin(false)} />
+            <SimpleLoginForm onSwitchToRegister={() => setIsLogin(false)} />
           ) : (
             <RegisterForm onSwitchToLogin={() => setIsLogin(true)} />
           )}
