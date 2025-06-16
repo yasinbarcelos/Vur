@@ -345,21 +345,42 @@ async def update_pipeline_step(
     """
     Função auxiliar para atualizar dados de uma etapa específica.
     """
+    import copy
+    
     pipeline = await PipelineService.get_pipeline_by_id(db, pipeline_id)
     if not pipeline or pipeline.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline not found")
     
-    config = pipeline.configuration or {"steps_data": {}, "completed_steps": [], "current_step": "upload"}
+    # Fazer cópia profunda da configuração para evitar problemas de referência
+    config = copy.deepcopy(pipeline.configuration or {
+        "steps_data": {}, 
+        "completed_steps": [], 
+        "current_step": "upload"
+    })
     
-    # Atualizar dados da etapa
+    # Garantir que steps_data existe
     if "steps_data" not in config:
         config["steps_data"] = {}
     
-    config["steps_data"][step_name] = step_data
+    # CORREÇÃO: Converter datetime para string antes de salvar no JSON
+    step_data_serializable = copy.deepcopy(step_data)
+    for key, value in step_data_serializable.items():
+        if hasattr(value, 'isoformat'):  # É um datetime
+            step_data_serializable[key] = value.isoformat()
+    
+    # Atualizar dados da etapa
+    config["steps_data"][step_name] = step_data_serializable
     
     # Atualizar pipeline
     update_data = PipelineUpdate(configuration=config)
     updated_pipeline = await PipelineService.update_pipeline(db, pipeline_id, update_data, current_user.id)
+    
+    # Verificar se a atualização foi bem-sucedida
+    if not updated_pipeline:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail="Failed to update pipeline configuration"
+        )
     
     logger.info(f"Pipeline step {step_name} updated", pipeline_id=pipeline_id, user_id=current_user.id)
     
