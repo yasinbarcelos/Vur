@@ -159,7 +159,6 @@ backend/.env
 backend/.venv
 backend/env/
 backend/venv/
-backend/venv_test/
 backend/ENV/
 backend/env.bak/
 backend/venv.bak/
