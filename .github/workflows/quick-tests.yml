@@ -8,7 +8,7 @@ on:
 
 env:
   SECRET_KEY: quick-test-secret-key
-  ENVIRONMENT: test
+  ENVIRONMENT: development
   DEBUG: false
 
 jobs:
@@ -135,7 +135,7 @@ jobs:
         # Iniciar container em background
         docker run -d --name vur-test \
           -e SECRET_KEY=test-key \
-          -e ENVIRONMENT=test \
+          -e ENVIRONMENT=development \
           -e DEBUG=false \
           -p 8000:8000 \
           vur-backend:test

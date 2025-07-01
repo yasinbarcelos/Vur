@@ -12,7 +12,7 @@ env:
   POSTGRES_USER: vur_test_user
   POSTGRES_PASSWORD: vur_test_password
   SECRET_KEY: test-secret-key-for-ci-cd-only
-  ENVIRONMENT: test
+  ENVIRONMENT: development
   DEBUG: false
   DATABASE_URL: postgresql://vur_test_user:vur_test_password@localhost:5432/vur_test_db
 
@@ -107,7 +107,7 @@ jobs:
         POSTGRES_USER=${{ env.POSTGRES_USER }}
         POSTGRES_PASSWORD=${{ env.POSTGRES_PASSWORD }}
         SECRET_KEY=${{ env.SECRET_KEY }}
-        ENVIRONMENT=test
+        ENVIRONMENT=development
         DEBUG=false
         LOG_LEVEL=INFO
         BACKEND_PORT=8000
