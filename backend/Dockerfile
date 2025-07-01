@@ -1,5 +1,5 @@
 # Multi-stage build para otimização
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 # Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Estágio de produção
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # Instalar dependências mínimas do sistema
 RUN apt-get update && apt-get install -y \
