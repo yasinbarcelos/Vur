@@ -28,7 +28,7 @@ jobs:
       # Backend Python vulnerabilities
       - name: Python Security Scan
         if: matrix.component == 'backend'
-        uses: pypa/gh-action-pip-audit@v1.0.8
+        uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: backend/requirements.txt
           format: sarif
