@@ -2,11 +2,12 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ main, develop ]
   pull_request:
-    branches: [main, develop]
+    branches: [ main, develop ]
 
 env:
+  # Configurações de ambiente para testes
   POSTGRES_DB: vur_test_db
   POSTGRES_USER: vur_test_user
   POSTGRES_PASSWORD: vur_test_password
@@ -16,12 +17,13 @@ env:
   DATABASE_URL: postgresql://vur_test_user:vur_test_password@localhost:5432/vur_test_db
 
 jobs:
-
-  backend-setup:
-    name: 🛠️ Backend Setup
+  # Job para testes do backend
+  backend-tests:
+    name: 🐍 Backend Tests
     runs-on: ubuntu-latest
-
+    
     services:
+      # PostgreSQL para testes
       postgres:
         image: postgres:15-alpine
         env:
@@ -36,6 +38,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # Redis para cache (opcional)
       redis:
         image: redis:7-alpine
         ports:
@@ -47,135 +50,133 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: 🔍 Checkout código
-        uses: actions/checkout@v4
+    - name: 🔍 Checkout código
+      uses: actions/checkout@v4
 
-      - name: 🐍 Configurar Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          cache: 'pip'
+    - name: 🐍 Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
 
-      - name: 📦 Instalar dependências
-        run: |
-          cd backend
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r tests/requirements-test.txt
+    - name: 📦 Instalar dependências do backend
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r tests/requirements-test.txt
 
-      - name: 🗃️ Executar migrações
-        run: |
-          cd backend
-          alembic upgrade head
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
+    - name: 🗃️ Configurar banco de dados
+      run: |
+        cd backend
+        # Executar migrações
+        alembic upgrade head
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
 
-      - name: 🚀 Iniciar backend
-        run: |
-          cd backend
-          python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
-          echo "Aguardando servidor backend..."
-          timeout 60 bash -c 'until curl -f http://localhost:8000/health 2>/dev/null; do sleep 2; done'
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-          SECRET_KEY: ${{ env.SECRET_KEY }}
-          ENVIRONMENT: ${{ env.ENVIRONMENT }}
-          DEBUG: ${{ env.DEBUG }}
+    - name: 🚀 Iniciar servidor backend
+      run: |
+        cd backend
+        # Iniciar servidor em background
+        python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+        
+        # Aguardar servidor estar pronto
+        echo "Aguardando servidor backend..."
+        timeout 60 bash -c 'until curl -f http://localhost:8000/health 2>/dev/null; do sleep 2; done'
+        echo "Backend está rodando!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
+        SECRET_KEY: ${{ env.SECRET_KEY }}
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
+        DEBUG: ${{ env.DEBUG }}
 
-  quick-tests:
-    name: ⚡ Quick Backend Tests
-    runs-on: ubuntu-latest
-    needs: backend-setup
+    - name: 🧪 Executar testes rápidos
+      run: |
+        cd backend/tests
+        python run_tests.py --quick --base-url http://localhost:8000/api/v1 --verbose
+      continue-on-error: false
 
-    steps:
-      - name: 🔍 Checkout código
-        uses: actions/checkout@v4
+    - name: 🧪 Executar testes completos de autenticação
+      run: |
+        cd backend/tests
+        python run_tests.py --auth --base-url http://localhost:8000/api/v1 --verbose
+      continue-on-error: false
 
-      - name: 🧪 Executar testes rápidos
-        run: |
-          cd backend/tests
-          python run_tests.py --quick --base-url http://localhost:8000/api/v1 --verbose
-
-  auth-tests:
-    name: 🔐 Auth Backend Tests
-    runs-on: ubuntu-latest
-    needs: backend-setup
-
-    steps:
-      - name: 🔍 Checkout código
-        uses: actions/checkout@v4
-
-      - name: 🧪 Executar testes de autenticação
-        run: |
-          cd backend/tests
-          python run_tests.py --auth --base-url http://localhost:8000/api/v1 --verbose
-
+  # Job para build e teste com Docker
   docker-tests:
     name: 🐳 Docker Build & Tests
     runs-on: ubuntu-latest
-    needs: [quick-tests, auth-tests]
+    needs: backend-tests
 
     steps:
-      - name: 🔍 Checkout código
-        uses: actions/checkout@v4
+    - name: 🔍 Checkout código
+      uses: actions/checkout@v4
 
-      - name: 🐳 Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    - name: 🐳 Configurar Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-      - name: 📝 Criar .env para testes
-        run: |
-          cat > .env << EOF
-          POSTGRES_DB=${{ env.POSTGRES_DB }}
-          POSTGRES_USER=${{ env.POSTGRES_USER }}
-          POSTGRES_PASSWORD=${{ env.POSTGRES_PASSWORD }}
-          SECRET_KEY=${{ env.SECRET_KEY }}
-          ENVIRONMENT=development
-          DEBUG=false
-          LOG_LEVEL=INFO
-          BACKEND_PORT=8000
-          FRONTEND_PORT=3000
-          REDIS_PORT=6379
-          VITE_API_URL=http://localhost:8000/api/v1
-          ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
-          EOF
+    - name: 📝 Criar arquivo .env para testes
+      run: |
+        cat > .env << EOF
+        # Configuração para testes CI/CD
+        POSTGRES_DB=${{ env.POSTGRES_DB }}
+        POSTGRES_USER=${{ env.POSTGRES_USER }}
+        POSTGRES_PASSWORD=${{ env.POSTGRES_PASSWORD }}
+        SECRET_KEY=${{ env.SECRET_KEY }}
+        ENVIRONMENT=development
+        DEBUG=false
+        LOG_LEVEL=INFO
+        BACKEND_PORT=8000
+        FRONTEND_PORT=3000
+        REDIS_PORT=6379
+        VITE_API_URL=http://localhost:8000/api/v1
+        ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+        EOF
 
-      - name: 🏗️ Build das imagens Docker
-        run: |
-          echo "🏗️ Construindo imagem do backend..."
-          docker compose -f docker-compose.dev.yml build backend
+    - name: 🏗️ Build das imagens Docker
+      run: |
+        echo "🏗️ Construindo imagem do backend..."
+        docker compose -f docker-compose.dev.yml build backend
+        
+        echo "🏗️ Construindo imagem do frontend..."
+        docker compose -f docker-compose.dev.yml build frontend
 
-          echo "🏗️ Construindo imagem do frontend..."
-          docker compose -f docker-compose.dev.yml build frontend
+    - name: 🚀 Iniciar serviços Docker
+      run: |
+        echo "🚀 Iniciando serviços..."
+        docker compose -f docker-compose.dev.yml up -d postgres redis
+        
+        echo "⏳ Aguardando PostgreSQL..."
+        timeout 60 bash -c 'until docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U ${{ env.POSTGRES_USER }}; do sleep 2; done'
+        
+        echo "🚀 Iniciando backend..."
+        docker compose -f docker-compose.dev.yml up -d backend
+        
+        echo "⏳ Aguardando backend..."
+        timeout 120 bash -c 'until curl -f http://localhost:8000/health; do sleep 5; done'
 
-      - name: 🚀 Iniciar serviços Docker
-        run: |
-          echo "🚀 Iniciando serviços..."
-          docker compose -f docker-compose.dev.yml up -d postgres redis
+    - name: 📊 Verificar status dos containers
+      run: |
+        echo "📊 Status dos containers:"
+        docker compose -f docker-compose.dev.yml ps
+        
+        echo -e "\n📝 Logs do backend:"
+        docker compose -f docker-compose.dev.yml logs backend --tail=50
 
-          echo "⏳ Aguardando PostgreSQL..."
-          timeout 60 bash -c 'until docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U ${{ env.POSTGRES_USER }}; do sleep 2; done'
+    - name: 🧪 Executar testes no ambiente Docker
+      run: |
+        echo "🧪 Executando testes no ambiente Docker..."
+        
+        # Instalar dependências de teste no container
+        docker compose -f docker-compose.dev.yml exec -T backend pip install -r tests/requirements-test.txt
+        
+        # Executar testes
+        docker compose -f docker-compose.dev.yml exec -T backend python tests/run_tests.py --quick --verbose
+        docker compose -f docker-compose.dev.yml exec -T backend python tests/run_tests.py --production --verbose
 
-          echo "🚀 Iniciando backend..."
-          docker compose -f docker-compose.dev.yml up -d backend
-
-          echo "⏳ Aguardando backend..."
-          timeout 120 bash -c 'until curl -f http://localhost:8000/health; do sleep 5; done'
-
-      - name: 📊 Verificar status dos containers
-        run: |
-          docker compose -f docker-compose.dev.yml ps
-          echo -e "\n📝 Logs do backend:"
-          docker compose -f docker-compose.dev.yml logs backend --tail=50
-
-      - name: 🧪 Executar testes no ambiente Docker
-        run: |
-          echo "🧪 Executando testes no ambiente Docker..."
-          docker compose -f docker-compose.dev.yml exec -T backend pip install -r tests/requirements-test.txt
-          docker compose -f docker-compose.dev.yml exec -T backend python tests/run_tests.py --quick --verbose
-          docker compose -f docker-compose.dev.yml exec -T backend python tests/run_tests.py --production --verbose
-
-      - name: 🧹 Cleanup
-        if: always()
-        run: |
-          docker compose -f docker-compose.dev.yml down -v
-          docker system prune -f
+    - name: 🧹 Cleanup
+      if: always()
+      run: |
+        echo "🧹 Limpando containers..."
+        docker compose -f docker-compose.dev.yml down -v
+        docker system prune -f
