@@ -74,6 +74,22 @@ jobs:
       env:
         DATABASE_URL: ${{ env.DATABASE_URL }}
 
+    - name: 🚀 Iniciar servidor backend
+      run: |
+        cd backend
+        # Iniciar servidor em background
+        python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+        
+        # Aguardar servidor estar pronto
+        echo "Aguardando servidor backend..."
+        timeout 60 bash -c 'until curl -f http://localhost:8000/health 2>/dev/null; do sleep 2; done'
+        echo "Backend está rodando!"
+      env:
+        DATABASE_URL: ${{ env.DATABASE_URL }}
+        SECRET_KEY: ${{ env.SECRET_KEY }}
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
+        DEBUG: ${{ env.DEBUG }}
+
     - name: 🧪 Executar testes rápidos
       run: |
         cd backend/tests
