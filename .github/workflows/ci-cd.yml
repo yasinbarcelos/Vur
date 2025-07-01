@@ -136,21 +136,21 @@ jobs:
     - name: 🏗️ Build das imagens Docker
       run: |
         echo "🏗️ Construindo imagem do backend..."
-        docker-compose -f docker-compose.dev.yml build backend
+        docker compose -f docker-compose.dev.yml build backend
         
         echo "🏗️ Construindo imagem do frontend..."
-        docker-compose -f docker-compose.dev.yml build frontend
+        docker compose -f docker-compose.dev.yml build frontend
 
     - name: 🚀 Iniciar serviços Docker
       run: |
         echo "🚀 Iniciando serviços..."
-        docker-compose -f docker-compose.dev.yml up -d postgres redis
+        docker compose -f docker-compose.dev.yml up -d postgres redis
         
         echo "⏳ Aguardando PostgreSQL..."
-        timeout 60 bash -c 'until docker-compose -f docker-compose.dev.yml exec -T postgres pg_isready -U ${{ env.POSTGRES_USER }}; do sleep 2; done'
+        timeout 60 bash -c 'until docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U ${{ env.POSTGRES_USER }}; do sleep 2; done'
         
         echo "🚀 Iniciando backend..."
-        docker-compose -f docker-compose.dev.yml up -d backend
+        docker compose -f docker-compose.dev.yml up -d backend
         
         echo "⏳ Aguardando backend..."
         timeout 120 bash -c 'until curl -f http://localhost:8000/health; do sleep 5; done'
@@ -158,25 +158,25 @@ jobs:
     - name: 📊 Verificar status dos containers
       run: |
         echo "📊 Status dos containers:"
-        docker-compose -f docker-compose.dev.yml ps
+        docker compose -f docker-compose.dev.yml ps
         
         echo -e "\n📝 Logs do backend:"
-        docker-compose -f docker-compose.dev.yml logs backend --tail=50
+        docker compose -f docker-compose.dev.yml logs backend --tail=50
 
     - name: 🧪 Executar testes no ambiente Docker
       run: |
         echo "🧪 Executando testes no ambiente Docker..."
         
         # Instalar dependências de teste no container
-        docker-compose -f docker-compose.dev.yml exec -T backend pip install -r tests/requirements-test.txt
+        docker compose -f docker-compose.dev.yml exec -T backend pip install -r tests/requirements-test.txt
         
         # Executar testes
-        docker-compose -f docker-compose.dev.yml exec -T backend python tests/run_tests.py --quick --verbose
-        docker-compose -f docker-compose.dev.yml exec -T backend python tests/run_tests.py --production --verbose
+        docker compose -f docker-compose.dev.yml exec -T backend python tests/run_tests.py --quick --verbose
+        docker compose -f docker-compose.dev.yml exec -T backend python tests/run_tests.py --production --verbose
 
     - name: 🧹 Cleanup
       if: always()
       run: |
         echo "🧹 Limpando containers..."
-        docker-compose -f docker-compose.dev.yml down -v
+        docker compose -f docker-compose.dev.yml down -v
         docker system prune -f
