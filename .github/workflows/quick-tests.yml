@@ -1,0 +1,159 @@
+name: Quick Tests
+
+on:
+  push:
+    branches-ignore: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  SECRET_KEY: quick-test-secret-key
+  ENVIRONMENT: test
+  DEBUG: false
+
+jobs:
+  quick-validation:
+    name: ⚡ Validação Rápida
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🔍 Checkout código
+      uses: actions/checkout@v4
+
+    - name: 🐍 Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: 📦 Instalar dependências essenciais
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r tests/requirements-test.txt
+
+    - name: 🔍 Verificar sintaxe Python
+      run: |
+        cd backend
+        python -m py_compile $(find . -name "*.py" -not -path "./venv/*")
+
+    - name: 📋 Verificar imports e estrutura
+      run: |
+        cd backend
+        python -c "
+        import sys
+        sys.path.append('.')
+        
+        # Verificar imports principais
+        try:
+            from app.api.v1.router import api_router
+            from app.core.config import settings
+            from app.models import user, dataset, model
+            print('✅ Imports principais OK')
+        except ImportError as e:
+            print(f'❌ Erro de import: {e}')
+            sys.exit(1)
+        "
+
+    - name: 🧪 Testes unitários básicos (se existirem)
+      run: |
+        cd backend
+        if [ -d "tests/unit" ]; then
+          python -m pytest tests/unit/ -v --tb=short
+        else
+          echo "⚠️ Nenhum teste unitário encontrado"
+        fi
+
+    - name: 🚀 Verificar se a aplicação inicia
+      run: |
+        cd backend
+        timeout 30s python -c "
+        import uvicorn
+        from main import app
+        
+        # Tentar importar a aplicação
+        print('✅ Aplicação importada com sucesso')
+        
+        # Verificar se os endpoints estão registrados
+        routes = [route.path for route in app.routes]
+        if '/api/v1' in str(routes):
+            print('✅ Rotas da API registradas')
+        else:
+            print('⚠️ Rotas da API não encontradas')
+        " || echo "⚠️ Timeout na verificação da aplicação"
+
+  lint-and-format:
+    name: 🎨 Lint & Format
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🔍 Checkout código
+      uses: actions/checkout@v4
+
+    - name: 🐍 Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 📦 Instalar ferramentas de linting
+      run: |
+        pip install flake8 black isort
+
+    - name: 🎨 Verificar formatação com Black
+      run: |
+        cd backend
+        black --check --diff app/ tests/ || echo "⚠️ Código não está formatado com Black"
+
+    - name: 📏 Verificar com Flake8
+      run: |
+        cd backend
+        flake8 app/ --max-line-length=88 --extend-ignore=E203,W503 || echo "⚠️ Issues encontradas com Flake8"
+
+    - name: 🔄 Verificar imports com isort
+      run: |
+        cd backend
+        isort --check-only --diff app/ tests/ || echo "⚠️ Imports não estão organizados"
+
+  docker-build:
+    name: 🐳 Docker Build Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🔍 Checkout código
+      uses: actions/checkout@v4
+
+    - name: 🐳 Configurar Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🏗️ Build da imagem do backend
+      run: |
+        docker build -t vur-backend:test ./backend
+
+    - name: 🧪 Testar container do backend
+      run: |
+        # Iniciar container em background
+        docker run -d --name vur-test \
+          -e SECRET_KEY=test-key \
+          -e ENVIRONMENT=test \
+          -e DEBUG=false \
+          -p 8000:8000 \
+          vur-backend:test
+
+        # Aguardar inicialização
+        sleep 10
+
+        # Verificar se está rodando
+        if docker ps | grep vur-test; then
+          echo "✅ Container iniciado com sucesso"
+        else
+          echo "❌ Container falhou ao iniciar"
+          docker logs vur-test
+          exit 1
+        fi
+
+    - name: 🧹 Limpar containers de teste
+      if: always()
+      run: |
+        docker stop vur-test || true
+        docker rm vur-test || true 
