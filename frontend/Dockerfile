@@ -1,5 +1,5 @@
 # Multi-stage build para React
-FROM node:18-alpine as builder
+FROM node:24-alpine as builder
 
 # Configurar diretório de trabalho
 WORKDIR /app
