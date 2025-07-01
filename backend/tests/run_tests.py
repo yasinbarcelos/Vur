@@ -74,8 +74,13 @@ class TestRunner:
         try:
             # Executar apenas testes essenciais
             await tester.test_health_check()
-            await tester.test_login_existing_user()
-            await tester.test_get_current_user()
+            
+            # Se health check passou, executar testes de login
+            if len(tester.test_results) > 0 and tester.test_results[-1]["success"]:
+                await tester.test_login_existing_user()
+                await tester.test_get_current_user()
+            else:
+                tester._print_warning("Pulando testes de login pois API não está respondendo")
             
             # Imprimir resumo
             total = len(tester.test_results)

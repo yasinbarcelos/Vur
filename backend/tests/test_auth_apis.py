@@ -243,10 +243,63 @@ class AuthAPITester:
             self._record_test_result("login_new_user", False, result['data'].get('detail'))
             return False
     
+    async def _ensure_test_user_exists(self):
+        """Garante que o usuário de teste existe, criando se necessário"""
+        self._print_info("🔍 Verificando se usuário de teste existe...")
+        
+        # Primeiro tenta fazer login para verificar se usuário existe
+        login_result = await self._make_request(
+            "POST",
+            "/auth/login",
+            data=self.existing_user
+        )
+        
+        if login_result["success"]:
+            self._print_info("✅ Usuário de teste já existe")
+            return True
+        elif login_result["status"] == 401:
+            # Usuário não existe, vamos criar
+            self._print_info("⚠️  Usuário de teste não existe, criando...")
+            
+            # Dados para criar o usuário de teste
+            user_data = {
+                "email": "testuser@example.com",
+                "username": self.existing_user["username"],
+                "password": self.existing_user["password"],
+                "full_name": "Test User for CI/CD"
+            }
+            
+            register_result = await self._make_request(
+                "POST",
+                "/auth/register",
+                data=user_data,
+                expected_status=201
+            )
+            
+            if register_result["success"]:
+                self._print_success("✅ Usuário de teste criado com sucesso!")
+                self._print_info(f"ID: {register_result['data'].get('id')}")
+                self._print_info(f"Username: {register_result['data'].get('username')}")
+                return True
+            else:
+                self._print_error("❌ Falha ao criar usuário de teste!")
+                self._print_error(f"Erro: {register_result['data'].get('detail', 'Erro desconhecido')}")
+                return False
+        else:
+            self._print_error(f"❌ Erro inesperado ao verificar usuário: {login_result['status']}")
+            return False
+
     async def test_login_existing_user(self):
-        """Testa login com usuário existente"""
+        """Testa login com usuário existente (cria o usuário se não existir)"""
         self._print_test_header("Login com Usuário Existente")
         
+        # Garantir que o usuário existe
+        if not await self._ensure_test_user_exists():
+            self._print_error("Falha ao garantir que usuário de teste existe!")
+            self._record_test_result("login_existing_user", False, "Usuário de teste não pôde ser criado")
+            return False
+        
+        # Agora fazer o login
         result = await self._make_request(
             "POST",
             "/auth/login",
