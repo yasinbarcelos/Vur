@@ -1,0 +1,216 @@
+name: 🚀 Release & Deployment
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.2.3)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: ${{ github.repository }}/backend
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+
+jobs:
+  # ==========================================
+  # 📋 PREPARE RELEASE
+  # ==========================================
+  prepare-release:
+    name: 📋 Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "🏷️ Release version: ${VERSION}"
+
+      - name: Generate changelog
+        run: |
+          echo "# 📝 Changelog for ${{ steps.version.outputs.version }}" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0 HEAD~1)..HEAD >> CHANGELOG.md
+
+  # ==========================================
+  # 🏗️ BUILD RELEASE IMAGES
+  # ==========================================
+  build-release-images:
+    name: 🏗️ Build Release Images
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ matrix.component == 'backend' && env.IMAGE_NAME_BACKEND || env.IMAGE_NAME_FRONTEND }}
+          tags: |
+            type=raw,value=${{ needs.prepare-release.outputs.version }}
+            type=raw,value=latest
+            type=raw,value=stable
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.component }}
+          file: ./${{ matrix.component }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================
+  # 🧪 RELEASE TESTING
+  # ==========================================
+  release-testing:
+    name: 🧪 Release Testing
+    runs-on: ubuntu-latest
+    needs: [prepare-release, build-release-images]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test release deployment
+        run: |
+          echo "🧪 Testing release ${{ needs.prepare-release.outputs.version }}"
+          
+          # Criar docker-compose temporário para testar as images de release
+          cat > docker-compose.test.yml << EOF
+          version: '3.8'
+          services:
+            backend:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ needs.prepare-release.outputs.version }}
+              ports:
+                - "8000:8000"
+              environment:
+                - DATABASE_URL=sqlite:///./test.db
+                - SECRET_KEY=test-key
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+                interval: 10s
+                timeout: 5s
+                retries: 3
+            
+            frontend:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ needs.prepare-release.outputs.version }}
+              ports:
+                - "3000:3000"
+              depends_on:
+                - backend
+          EOF
+          
+          # Iniciar containers
+          docker-compose -f docker-compose.test.yml up -d
+          
+          # Aguardar inicialização
+          sleep 30
+          
+          # Testar endpoints
+          curl -f http://localhost:8000/health || exit 1
+          curl -f http://localhost:3000 || exit 1
+          
+          # Limpar
+          docker-compose -f docker-compose.test.yml down
+
+  # ==========================================
+  # 📦 CREATE GITHUB RELEASE
+  # ==========================================
+  create-release:
+    name: 📦 Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [prepare-release, build-release-images, release-testing]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          echo "## 🚀 What's New" > release_notes.md
+          echo "" >> release_notes.md
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD~1)..HEAD >> release_notes.md
+          echo "" >> release_notes.md
+          echo "## 🐳 Docker Images" >> release_notes.md
+          echo "- Backend: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ needs.prepare-release.outputs.version }}\`" >> release_notes.md
+          echo "- Frontend: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ needs.prepare-release.outputs.version }}\`" >> release_notes.md
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.version }}
+          release_name: 🚀 VUR ${{ needs.prepare-release.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+
+  # ==========================================
+  # 🚀 DEPLOY TO PRODUCTION
+  # ==========================================
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [prepare-release, create-release]
+    environment: production
+    
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "🚀 Deploying VUR ${{ needs.prepare-release.outputs.version }} to production..."
+          echo "Backend image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ needs.prepare-release.outputs.version }}"
+          echo "Frontend image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ needs.prepare-release.outputs.version }}"
+          
+          # Aqui você adicionaria os comandos específicos para deploy em produção
+          # Exemplos:
+          # - kubectl set image deployment/backend backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ needs.prepare-release.outputs.version }}
+          # - ansible-playbook deploy.yml -e version=${{ needs.prepare-release.outputs.version }}
+          # - curl -X POST "https://your-deploy-webhook.com/deploy" -H "Authorization: Bearer ${{ secrets.DEPLOY_TOKEN }}" -d '{"version":"${{ needs.prepare-release.outputs.version }}"}'
+
+      - name: Post-deployment verification
+        run: |
+          echo "✅ Verifying production deployment..."
+          # Adicione verificações específicas do seu ambiente de produção
+          # curl -f https://your-production-url.com/health
+          echo "🎉 Deployment completed successfully!" 
