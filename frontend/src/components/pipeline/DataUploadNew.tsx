@@ -50,10 +50,13 @@ const DataUploadNew = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.toLowerCase().endsWith('.csv')) {
+    const validExtensions = ['.csv', '.h5', '.hdf5', '.xlsx', '.xls'];
+    const isValidFile = validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+    
+    if (!isValidFile) {
       toast({
         title: "Arquivo inválido",
-        description: "Por favor, selecione um arquivo CSV válido",
+        description: "Por favor, selecione um arquivo CSV, Excel ou HDF5 válido",
         variant: "destructive"
       });
       return;
@@ -62,7 +65,7 @@ const DataUploadNew = () => {
     setUploadForm(prev => ({
       ...prev,
       file,
-      name: prev.name || file.name.replace('.csv', '')
+      name: prev.name || file.name.replace(/\.(csv|h5|hdf5|xlsx|xls)$/i, '')
     }));
   };
 
@@ -115,7 +118,7 @@ const DataUploadNew = () => {
       <div className="text-center">
         <h2 className="text-2xl font-bold">Upload dos Dados</h2>
         <p className="text-muted-foreground mt-2">
-          Faça upload do seu arquivo CSV para análise de séries temporais
+          Faça upload do seu arquivo de dados para análise (CSV, Excel ou HDF5)
         </p>
       </div>
 
@@ -126,13 +129,13 @@ const DataUploadNew = () => {
             Informações do Dataset
           </CardTitle>
           <CardDescription>
-            Forneça as informações básicas sobre seu dataset
+            Faça upload do seu arquivo de dados para análise (CSV, Excel ou HDF5)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* File Selection */}
           <div className="space-y-2">
-            <Label htmlFor="file-upload">Arquivo CSV *</Label>
+            <Label htmlFor="file-upload">Arquivo de Dados *</Label>
             <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center hover:border-muted-foreground/50 transition-colors">
               {uploadForm.file ? (
                 <div className="flex items-center justify-center gap-2">
@@ -147,14 +150,14 @@ const DataUploadNew = () => {
                   <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
                   <Label htmlFor="file-upload" className="cursor-pointer">
                     <span className="font-medium">Clique para selecionar</span>
-                    <span className="text-sm text-muted-foreground block">ou arraste e solte aqui</span>
+                    <span className="text-sm text-muted-foreground block">CSV, Excel (.xlsx, .xls) ou HDF5 (.h5, .hdf5)</span>
                   </Label>
                 </>
               )}
               <Input
                 id="file-upload"
                 type="file"
-                accept=".csv"
+                accept=".csv,.h5,.hdf5,.xlsx,.xls"
                 onChange={handleFileSelect}
                 className="hidden"
                 disabled={uploadMutation.isPending}

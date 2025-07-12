@@ -145,7 +145,7 @@ class ApiClient {
     
     get: (id: string) => this.get(`/datasets/${id}`),
     
-    preview: (id: string, params?: { page?: number; limit?: number }) =>
+    preview: (id: string, params?: { page?: number; rows?: number }) =>
       this.get(`/datasets/${id}/preview`, { params }),
     
     statistics: (id: string) => this.get(`/datasets/${id}/statistics`),
@@ -324,7 +324,7 @@ export const getDatasets = async (): Promise<{ datasets: Dataset[]; total: numbe
 
 export const getDatasetPreview = async (
   datasetId: number,
-  rows: number = 10
+  rows: number = 100000
 ): Promise<DatasetPreview> => {
   const response = await fetch(
     `${API_BASE_URL}/api/v1/datasets/${datasetId}/preview?rows=${rows}`,

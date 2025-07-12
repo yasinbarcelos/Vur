@@ -77,10 +77,13 @@ const DataManagement = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.includes('csv') && !file.name.endsWith('.csv')) {
+    const validExtensions = ['.csv', '.h5', '.hdf5', '.xlsx', '.xls'];
+    const isValidFile = validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+    
+    if (!isValidFile) {
       toast({
         title: "Erro no upload",
-        description: "Por favor, selecione um arquivo CSV válido",
+        description: "Por favor, selecione um arquivo CSV, Excel ou HDF5 válido",
         variant: "destructive"
       });
       return;
@@ -154,14 +157,26 @@ const DataManagement = () => {
     }
   };
 
+  // Função utilitária para carregar dados completos
+  const loadCompleteDataset = async (datasetId: string): Promise<DatasetPreview> => {
+    // Primeiro buscar informações básicas
+    const basicPreview = await api.datasets.preview(datasetId, { rows: 1 });
+    
+    // Depois carregar todos os dados
+    const completePreview = await api.datasets.preview(datasetId, { rows: basicPreview.total_rows });
+    
+    return completePreview;
+  };
+
   // Função para carregar preview de dataset
   const handleLoadPreview = async (dataset: Dataset) => {
     setIsLoadingPreview(true);
     setSelectedDataset(dataset);
     
     try {
-      const preview: DatasetPreview = await api.datasets.preview(dataset.id.toString(), { limit: 20 });
-      setDatasetPreview(preview);
+      // Buscar todos os dados completos
+      const fullPreview: DatasetPreview = await loadCompleteDataset(dataset.id.toString());
+      setDatasetPreview(fullPreview);
     } catch (error) {
       toast({
         title: "Erro ao carregar preview",
@@ -512,7 +527,7 @@ const DataManagement = () => {
                   Upload de Novo Dataset
                 </CardTitle>
                 <CardDescription>
-                  Carregue um arquivo CSV para criar um novo dataset
+                  Carregue um arquivo CSV, Excel ou HDF5 para criar um novo dataset
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -545,17 +560,17 @@ const DataManagement = () => {
                     <input
                       id="file-upload"
                       type="file"
-                      accept=".csv"
+                      accept=".csv,.h5,.hdf5,.xlsx,.xls"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
                     <label htmlFor="file-upload" className="cursor-pointer">
                       <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
                       <p className="text-lg font-medium text-gray-700">
-                        Clique para selecionar um arquivo CSV
+                        Clique para selecionar um arquivo
                       </p>
                       <p className="text-sm text-gray-500 mt-2">
-                        Ou arraste e solte o arquivo aqui
+                        Suporte para CSV, Excel (.xlsx, .xls) e HDF5 (.h5, .hdf5)
                       </p>
                     </label>
                   </div>

@@ -46,3 +46,5 @@ psutil>=5.9.0
 
 # File Processing
 openpyxl>=3.1.0  # For Excel file support
+h5py>=3.10.0     # For HDF5 file support
+tables>=3.9.0    # For HDF5 file support with pandas integration

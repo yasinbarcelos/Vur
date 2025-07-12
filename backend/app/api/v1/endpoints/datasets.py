@@ -112,10 +112,10 @@ async def upload_dataset(
         HTTPException: If upload fails
     """
     # Validate file type
-    if not file.filename.endswith(('.csv', '.xlsx', '.xls')):
+    if not file.filename.endswith(('.csv', '.xlsx', '.xls', '.h5', '.hdf5')):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only CSV and Excel files are supported"
+            detail="Only CSV, Excel, and HDF5 files are supported"
         )
 
     # Create upload directory if it doesn't exist
@@ -204,7 +204,7 @@ async def get_dataset(
 @router.get("/{dataset_id}/preview", response_model=DatasetPreviewResponse)
 async def preview_dataset(
     dataset_id: int,
-    rows: int = Query(10, ge=1, le=100, description="Number of rows to preview"),
+    rows: int = Query(100, ge=1, le=100000, description="Number of rows to preview"),
     current_user: User = Depends(AuthService.get_current_active_user),
     db: AsyncSession = Depends(get_async_session)
 ):
@@ -239,46 +239,16 @@ async def preview_dataset(
         )
 
     try:
-        # Read dataset file
-        if dataset.filename.endswith('.csv'):
-            df = pd.read_csv(dataset.file_path)
-        else:
-            df = pd.read_excel(dataset.file_path)
-
-        # Get preview data
-        preview_df = df.head(rows)
+        # Use the utility function from DatasetService
+        preview_result = DatasetService.get_dataset_preview(dataset.file_path, rows)
         
-        # Convert to records for JSON serialization
-        data_records = []
-        for _, row in preview_df.iterrows():
-            record = {}
-            for col in df.columns:
-                value = row[col]
-                if pd.isna(value):
-                    record[col] = None
-                elif isinstance(value, (np.integer, np.floating)):
-                    record[col] = float(value)
-                else:
-                    record[col] = str(value)
-            data_records.append(record)
-
-        # Get data types
-        data_types = {}
-        for col in df.columns:
-            if pd.api.types.is_numeric_dtype(df[col]):
-                data_types[col] = "numeric"
-            elif pd.api.types.is_datetime64_any_dtype(df[col]):
-                data_types[col] = "datetime"
-            else:
-                data_types[col] = "text"
-
         return DatasetPreviewResponse(
-            columns=df.columns.tolist(),
-            data=data_records,
-            total_rows=len(df),
-            preview_rows=len(preview_df),
-            data_types=data_types,
-            statistics=None
+            columns=preview_result['columns'],
+            data=preview_result['data'],
+            total_rows=preview_result['total_rows'],
+            preview_rows=preview_result['preview_rows'],
+            data_types=preview_result['data_types'],
+            statistics=preview_result['statistics']
         )
 
     except Exception as e:
@@ -323,11 +293,8 @@ async def get_dataset_statistics(
         )
     
     try:
-        # Load dataset
-        if dataset.filename.endswith('.csv'):
-            df = pd.read_csv(dataset.file_path)
-        else:
-            df = pd.read_excel(dataset.file_path)
+        # Load dataset using utility function
+        df = DatasetService._read_dataset_file(dataset.file_path)
         
         # Perform complete analysis
         analysis_result = await data_analysis_service.analyze_dataset_complete(df, dataset_id)
@@ -374,11 +341,8 @@ async def get_data_quality(
         )
     
     try:
-        # Load dataset
-        if dataset.filename.endswith('.csv'):
-            df = pd.read_csv(dataset.file_path)
-        else:
-            df = pd.read_excel(dataset.file_path)
+        # Load dataset using utility function
+        df = DatasetService._read_dataset_file(dataset.file_path)
         
         # Calculate data quality
         quality_result = data_analysis_service.calculate_data_quality(df)
@@ -427,11 +391,8 @@ async def analyze_timeseries(
         )
     
     try:
-        # Load dataset
-        if dataset.filename.endswith('.csv'):
-            df = pd.read_csv(dataset.file_path)
-        else:
-            df = pd.read_excel(dataset.file_path)
+        # Load dataset using utility function
+        df = DatasetService._read_dataset_file(dataset.file_path)
         
         # Validate target column
         if request.target_column not in df.columns:

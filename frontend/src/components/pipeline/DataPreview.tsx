@@ -45,6 +45,11 @@ const DataPreview = () => {
   // Estados para carregamento de dados da API
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [apiData, setApiData] = useState<DatasetPreview | null>(null);
+  
+  // Estados para controle de visualização
+  const [previewLimit, setPreviewLimit] = useState(25); // Quantos registros mostrar na tabela
+  const [loadLimit, setLoadLimit] = useState(1000); // Quantos registros carregar da API
+  const [currentPage, setCurrentPage] = useState(1); // Página atual para paginação
 
   // Carregar dados da API quando há datasetId mas não há dados locais
   useEffect(() => {
@@ -52,12 +57,11 @@ const DataPreview = () => {
       if (pipelineData.datasetId && (!pipelineData.data || pipelineData.data.length === 0)) {
         setIsLoadingData(true);
         try {
-          // Primeiro carregar preview para mostrar na tela (apenas primeiras linhas)
-          const preview = await getDatasetPreview(pipelineData.datasetId, 10);
-          setApiData(preview);
+          // Carregar dados conforme limite configurado
+          const fullData = await getDatasetPreview(pipelineData.datasetId, loadLimit);
           
-          // Agora carregar TODOS os dados para o pipeline (para uso nos outros componentes)
-          const fullData = await getDatasetPreview(pipelineData.datasetId, preview.total_rows);
+          // Usar os dados completos tanto para API quanto para pipeline
+          setApiData(fullData);
           
           // Atualizar dados do pipeline com TODOS os dados da API
           updatePipelineData({
@@ -83,7 +87,7 @@ const DataPreview = () => {
     };
 
     loadDataFromAPI();
-  }, [pipelineData.datasetId, pipelineData.data, updatePipelineData, toast]);
+  }, [pipelineData.datasetId, pipelineData.data, updatePipelineData, toast, loadLimit]);
 
   // Função para detectar tipo de dados
   const detectDataType = (values: any[]): string => {
@@ -275,8 +279,36 @@ const DataPreview = () => {
   const currentData = pipelineData.data || apiData?.data;
   const currentColumns = pipelineData.columns || apiData?.columns;
   
-  // Dados para preview na tabela (apenas primeiras linhas para exibição)
-  const previewDisplayData = apiData?.data || currentData?.slice(0, 10) || [];
+  // Dados para preview na tabela (com paginação)
+  const previewDisplayData = useMemo(() => {
+    if (!currentData) return [];
+    
+    const startIndex = (currentPage - 1) * previewLimit;
+    const endIndex = startIndex + previewLimit;
+    
+    return currentData.slice(startIndex, endIndex);
+  }, [currentData, currentPage, previewLimit]);
+
+  // Calcular informações de paginação
+  const totalPages = Math.ceil((currentData?.length || 0) / previewLimit);
+  const hasMultiplePages = totalPages > 1;
+
+  // Resetar página quando mudar o limite de preview
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [previewLimit]);
+  
+  // DEBUG: Log dos dados sendo exibidos
+  useEffect(() => {
+    if (previewDisplayData.length > 0) {
+      console.log('🔍 DEBUG - Dados sendo exibidos na tabela:', {
+        totalRows: previewDisplayData.length,
+        totalColumns: currentColumns?.length || 0,
+        firstRow: previewDisplayData[0],
+        allColumns: currentColumns
+      });
+    }
+  }, [previewDisplayData, currentColumns]);
 
   // Se está carregando dados da API
   if (isLoadingData) {
@@ -405,6 +437,94 @@ const DataPreview = () => {
         </Card>
       )}
 
+      {/* Controles de Visualização */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="w-5 h-5" />
+            Controles de Visualização
+          </CardTitle>
+          <CardDescription>
+            Configure quantos dados carregar e exibir
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Registros a Carregar da API
+              </label>
+              <div className="flex items-center gap-2">
+                <select 
+                  value={loadLimit} 
+                  onChange={(e) => setLoadLimit(Number(e.target.value))}
+                  className="flex-1 p-2 border border-gray-300 rounded-md"
+                >
+                  <option value={100}>100 registros</option>
+                  <option value={500}>500 registros</option>
+                  <option value={1000}>1.000 registros</option>
+                  <option value={5000}>5.000 registros</option>
+                  <option value={10000}>10.000 registros</option>
+                  <option value={50000}>50.000 registros</option>
+                  <option value={100000}>100.000 registros</option>
+                </select>
+                                 <Button 
+                   size="sm"
+                   onClick={() => {
+                     // Recarregar dados com novo limite
+                     if (pipelineData.datasetId) {
+                       setApiData(null);
+                       updatePipelineData({ data: [], columns: [], totalRows: 0 });
+                       setCurrentPage(1);
+                     }
+                   }}
+                   title="Recarregar dados com o novo limite"
+                 >
+                   <RefreshCw className="w-4 h-4" />
+                 </Button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Total disponível: {dataQuality?.totalRows.toLocaleString() || 'N/A'}
+              </p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Registros a Exibir na Tabela
+              </label>
+              <select 
+                value={previewLimit} 
+                onChange={(e) => setPreviewLimit(Number(e.target.value))}
+                className="w-full p-2 border border-gray-300 rounded-md"
+              >
+                <option value={10}>10 registros</option>
+                <option value={25}>25 registros</option>
+                <option value={50}>50 registros</option>
+                <option value={100}>100 registros</option>
+                <option value={200}>200 registros</option>
+                <option value={500}>500 registros</option>
+                <option value={1000}>1.000 registros</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Carregados: {currentData?.length.toLocaleString() || 0}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-blue-700">
+              <Info className="w-4 h-4" />
+              <span>
+                <strong>Exibindo:</strong> {previewDisplayData.length.toLocaleString()} registros de {currentData?.length.toLocaleString() || 0} carregados
+                {currentData && currentData.length >= loadLimit && (
+                  <span className="text-orange-600"> (máximo atingido)</span>
+                )}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Preview dos Dados */}
       <Card>
         <CardHeader>
@@ -416,14 +536,15 @@ const DataPreview = () => {
             </Badge>
           </CardTitle>
           <CardDescription>
-            Primeiras 10 linhas do seu dataset ({dataQuality?.totalRows.toLocaleString() || currentData.length.toLocaleString()} registros totais)
+            Visualização do dataset - Exibindo {previewDisplayData.length.toLocaleString()} de {currentData?.length.toLocaleString() || 0} registros carregados 
+            ({dataQuality?.totalRows.toLocaleString() || 'N/A'} registros totais no arquivo)
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full border-collapse border border-gray-200">
-              <thead>
-                <tr className="bg-gray-50">
+              <thead className="sticky top-0 bg-gray-50">
+                <tr>
                   {currentColumns!.map((column) => (
                     <th key={column} className="border border-gray-200 p-2 text-left text-sm font-medium">
                       {column}
@@ -452,6 +573,59 @@ const DataPreview = () => {
               </tbody>
             </table>
           </div>
+          
+          {/* Controles de Paginação */}
+          {hasMultiplePages && (
+            <div className="mt-4 flex items-center justify-between">
+              <div className="text-sm text-gray-500">
+                Página {currentPage} de {totalPages} 
+                ({((currentPage - 1) * previewLimit + 1).toLocaleString()} - {Math.min(currentPage * previewLimit, currentData?.length || 0).toLocaleString()} de {currentData?.length.toLocaleString() || 0} registros)
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                >
+                  Primeira
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
+                  {currentPage}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Próxima
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                >
+                  Última
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {!hasMultiplePages && previewData.length > 0 && (
+            <div className="mt-2 text-sm text-gray-500 text-center">
+              Exibindo todos os {previewData.length} registros carregados
+            </div>
+          )}
         </CardContent>
       </Card>
 

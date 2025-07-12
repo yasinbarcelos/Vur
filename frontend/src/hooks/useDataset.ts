@@ -199,7 +199,7 @@ export const useValidateDataset = () => {
 };
 
 // Get dataset preview
-export const useDatasetPreview = (id: string, params?: { page?: number; limit?: number }) => {
+export const useDatasetPreview = (id: string, params?: { page?: number; rows?: number }) => {
   return useQuery({
     queryKey: datasetKeys.preview(id),
     queryFn: () => api.datasets.preview(id, params) as Promise<DatasetPreview>,

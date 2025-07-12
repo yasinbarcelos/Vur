@@ -18,7 +18,7 @@ Uma plataforma completa para análise e previsão de séries temporais usando Ma
 
 ### 🎯 **Core Features**
 
-- **Upload de Dados**: Suporte para arquivos CSV com detecção automática de colunas
+- **Upload de Dados**: Suporte para arquivos CSV, Excel e HDF5
 - **Análise Exploratória**: Visualizações interativas e estatísticas descritivas
 - **Múltiplos Algoritmos**: ARIMA, LSTM, Prophet, Random Forest
 - **Previsões em Tempo Real**: Monitoramento contínuo com intervalos de confiança
@@ -173,7 +173,7 @@ npm run dev
 ### **1. Upload de Dados**
 
 - Acesse a página de **Pipeline**
-- Faça upload de um arquivo CSV com dados de série temporal
+- Faça upload de um arquivo CSV, Excel ou HDF5
 - O sistema detectará automaticamente colunas de data e valores
 
 ### **2. Análise Exploratória**
@@ -404,7 +404,7 @@ A documentação completa da API está disponível em:
 
 #### **Datasets:**
 
-- `POST /datasets/upload` - Upload de CSV
+- `POST /datasets/upload` - Upload de CSV, Excel ou HDF5
 - `GET /datasets/{id}/preview` - Preview dos dados
 
 #### **Modelos:**

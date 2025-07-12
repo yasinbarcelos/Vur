@@ -177,7 +177,78 @@ class DatasetService:
         return True
     
     @staticmethod
-    def get_dataset_preview(file_path: str, rows: int = 10) -> Dict[str, Any]:
+    def _read_dataset_file(file_path: str, nrows: Optional[int] = None) -> pd.DataFrame:
+        """
+        Read dataset file based on extension.
+        
+        Args:
+            file_path: Path to dataset file
+            nrows: Number of rows to read (None for all)
+            
+        Returns:
+            Pandas DataFrame
+            
+        Raises:
+            ValueError: If file format is not supported or file cannot be read
+        """
+        try:
+            if file_path.endswith('.csv'):
+                return pd.read_csv(file_path, nrows=nrows)
+            elif file_path.endswith(('.xlsx', '.xls')):
+                return pd.read_excel(file_path, nrows=nrows)
+            elif file_path.endswith(('.h5', '.hdf5')):
+                # For HDF5 files, try to read from common paths/keys
+                try:
+                    # First, try to read all keys to find data
+                    with pd.HDFStore(file_path, mode='r') as store:
+                        keys = store.keys()
+                        if not keys:
+                            raise ValueError("No data found in HDF5 file")
+                        
+                        # Use the first key found
+                        first_key = keys[0]
+                        if nrows is not None:
+                            return pd.read_hdf(file_path, key=first_key, start=0, stop=nrows)
+                        else:
+                            return pd.read_hdf(file_path, key=first_key)
+                except Exception as e:
+                    # If pandas HDFStore fails, try h5py directly
+                    import h5py
+                    with h5py.File(file_path, 'r') as f:
+                        # Try to find the first dataset
+                        dataset_names = []
+                        f.visititems(lambda name, obj: dataset_names.append(name) if isinstance(obj, h5py.Dataset) else None)
+                        
+                        if not dataset_names:
+                            raise ValueError("No datasets found in HDF5 file")
+                        
+                        # Read the first dataset
+                        h5_dataset = f[dataset_names[0]]
+                        if len(h5_dataset.shape) == 2:
+                            # 2D dataset - can be converted to DataFrame
+                            if nrows is not None:
+                                data = h5_dataset[:nrows, :]
+                            else:
+                                data = h5_dataset[:]
+                            return pd.DataFrame(data)
+                        elif len(h5_dataset.shape) == 1:
+                            # 1D dataset - convert to single column DataFrame
+                            if nrows is not None:
+                                data = h5_dataset[:nrows]
+                            else:
+                                data = h5_dataset[:]
+                            return pd.DataFrame({dataset_names[0]: data})
+                        else:
+                            raise ValueError("Dataset has unsupported shape for tabular data")
+            else:
+                raise ValueError(f"Unsupported file format: {file_path}")
+                
+        except Exception as e:
+            logger.error("Failed to read dataset file", file_path=file_path, error=str(e))
+            raise ValueError(f"Failed to read dataset file: {str(e)}")
+
+    @staticmethod
+    def get_dataset_preview(file_path: str, rows: int = 100) -> Dict[str, Any]:
         """
         Get preview of dataset.
         
@@ -189,37 +260,42 @@ class DatasetService:
             Dataset preview information
         """
         try:
-            # Read CSV file
-            df = pd.read_csv(file_path, nrows=rows + 1000)  # Read extra rows for statistics
+            # First, read the entire file to get the true total number of rows
+            df_full = DatasetService._read_dataset_file(file_path)
+            total_rows = len(df_full)
             
-            # Get preview data
-            preview_df = df.head(rows)
+            # Get preview data (first `rows` rows)
+            preview_df = df_full.head(rows)
+            
+            # For statistics, use a reasonable sample size (up to 10,000 rows)
+            stats_sample_size = min(10000, total_rows)
+            df_stats = df_full.head(stats_sample_size)
             
             # Get data types
-            data_types = {col: str(dtype) for col, dtype in df.dtypes.items()}
+            data_types = {col: str(dtype) for col, dtype in df_full.dtypes.items()}
             
-            # Get basic statistics
+            # Get basic statistics using the sample
             statistics = {}
-            for col in df.columns:
-                if df[col].dtype in ['int64', 'float64']:
+            for col in df_full.columns:
+                if df_stats[col].dtype in ['int64', 'float64']:
                     statistics[col] = {
-                        'mean': float(df[col].mean()) if not df[col].isna().all() else None,
-                        'std': float(df[col].std()) if not df[col].isna().all() else None,
-                        'min': float(df[col].min()) if not df[col].isna().all() else None,
-                        'max': float(df[col].max()) if not df[col].isna().all() else None,
-                        'null_count': int(df[col].isna().sum())
+                        'mean': float(df_stats[col].mean()) if not df_stats[col].isna().all() else None,
+                        'std': float(df_stats[col].std()) if not df_stats[col].isna().all() else None,
+                        'min': float(df_stats[col].min()) if not df_stats[col].isna().all() else None,
+                        'max': float(df_stats[col].max()) if not df_stats[col].isna().all() else None,
+                        'null_count': int(df_stats[col].isna().sum())
                     }
                 else:
                     statistics[col] = {
-                        'unique_count': int(df[col].nunique()),
-                        'null_count': int(df[col].isna().sum()),
-                        'most_frequent': str(df[col].mode().iloc[0]) if not df[col].empty else None
+                        'unique_count': int(df_stats[col].nunique()),
+                        'null_count': int(df_stats[col].isna().sum()),
+                        'most_frequent': str(df_stats[col].mode().iloc[0]) if not df_stats[col].empty else None
                     }
             
             return {
-                'columns': list(df.columns),
+                'columns': list(df_full.columns),
                 'data': preview_df.to_dict('records'),
-                'total_rows': len(df),
+                'total_rows': total_rows,  # Now using the real total
                 'preview_rows': len(preview_df),
                 'data_types': data_types,
                 'statistics': statistics
@@ -228,7 +304,7 @@ class DatasetService:
         except Exception as e:
             logger.error("Failed to preview dataset", file_path=file_path, error=str(e))
             raise ValueError(f"Failed to preview dataset: {str(e)}")
-    
+
     @staticmethod
     def validate_dataset(file_path: str) -> Dict[str, Any]:
         """
@@ -241,7 +317,8 @@ class DatasetService:
             Validation results
         """
         try:
-            df = pd.read_csv(file_path)
+            # Read file
+            df = DatasetService._read_dataset_file(file_path)
             
             errors = []
             warnings = []
@@ -451,133 +528,103 @@ class DatasetService:
         chunk_size: int = 10000
     ) -> DatasetProcessingResponse:
         """
-        Process CSV data and save to database for faster access.
-
+        Process and save dataset to database for faster access.
+        
         Args:
             db: Database session
             dataset_id: Dataset ID
             owner_id: Owner user ID (for authorization)
-            chunk_size: Chunk size for processing large files
-
+            chunk_size: Size of chunks for processing
+            
         Returns:
             Processing results
+            
+        Raises:
+            ValueError: If dataset not found or access denied
         """
-        start_time = datetime.utcnow()
-
         # Get dataset
         dataset = await DatasetService.get_dataset_by_id(db, dataset_id)
         if not dataset or dataset.owner_id != owner_id:
             raise ValueError("Dataset not found or access denied")
-
-        errors = []
-        warnings = []
-
+        
+        start_time = datetime.utcnow()
+        
         try:
-            # Read CSV file
-            df = pd.read_csv(dataset.file_path)
-
-            if df.empty:
-                raise ValueError("Dataset is empty")
-
-            # Create table name
-            table_name = f"dataset_{dataset_id}_data"
-
-            # Clean column names for database
-            df.columns = [col.strip().replace(' ', '_').replace('-', '_').lower() for col in df.columns]
-
-            # Process data in chunks for large datasets
+            # Read dataset based on file extension
+            df = DatasetService._read_dataset_file(dataset.file_path)
+            
             total_rows = len(df)
-            rows_processed = 0
-
-            # Create table and insert data
-            # Note: This is a simplified approach. In production, you might want to use
-            # a more sophisticated approach with proper data types and constraints
-
-            # Drop table if exists
-            await db.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
-
-            # Create table dynamically based on DataFrame structure
-            create_table_sql = DatasetService._generate_create_table_sql(df, table_name)
-            await db.execute(text(create_table_sql))
-
-            # Insert data in chunks
+            total_columns = len(df.columns)
+            
+            # Create table name
+            table_name = f"dataset_{dataset_id}"
+            
+            # Generate SQL for table creation
+            create_sql = DatasetService._generate_create_table_sql(df, table_name)
+            
+            # Drop table if exists and create new one
+            drop_sql = f"DROP TABLE IF EXISTS {table_name}"
+            await db.execute(text(drop_sql))
+            await db.execute(text(create_sql))
+            
+            # Process data in chunks
+            processed_rows = 0
+            
             for chunk_start in range(0, total_rows, chunk_size):
                 chunk_end = min(chunk_start + chunk_size, total_rows)
                 chunk_df = df.iloc[chunk_start:chunk_end]
-
-                # Convert DataFrame to SQL insert
-                insert_sql, values = DatasetService._generate_insert_sql(chunk_df, table_name)
-
-                try:
-                    await db.execute(text(insert_sql), values)
-                    rows_processed += len(chunk_df)
-
-                    logger.info(
-                        "Processed chunk",
-                        dataset_id=dataset_id,
-                        chunk_start=chunk_start,
-                        chunk_end=chunk_end,
-                        rows_processed=rows_processed
-                    )
-
-                except Exception as e:
-                    error_msg = f"Failed to insert chunk {chunk_start}-{chunk_end}: {str(e)}"
-                    errors.append(error_msg)
-                    logger.error("Chunk processing failed", error=error_msg)
-
-            await db.commit()
-
-            # Update dataset metadata
-            dataset.dataset_metadata = {
-                'database_table': table_name,
-                'processed_at': datetime.utcnow().isoformat(),
-                'rows_in_db': rows_processed,
-                'columns_in_db': len(df.columns)
-            }
-            dataset.status = DatasetStatus.VALIDATED
+                
+                # Generate insert SQL for chunk
+                insert_sql, data_values = DatasetService._generate_insert_sql(chunk_df, table_name)
+                
+                # Execute insert
+                await db.execute(text(insert_sql), data_values)
+                
+                processed_rows += len(chunk_df)
+                
+                logger.info(
+                    "Processed chunk",
+                    dataset_id=dataset_id,
+                    chunk_start=chunk_start,
+                    chunk_end=chunk_end,
+                    progress=f"{processed_rows}/{total_rows}"
+                )
+            
+            # Update dataset status
+            dataset.status = DatasetStatus.PROCESSED
+            dataset.row_count = total_rows
             dataset.updated_at = datetime.utcnow()
-
+            
             await db.commit()
-            await db.refresh(dataset)
-
-            processing_time = (datetime.utcnow() - start_time).total_seconds()
-
+            
+            end_time = datetime.utcnow()
+            processing_time = (end_time - start_time).total_seconds()
+            
             logger.info(
                 "Dataset processing completed",
                 dataset_id=dataset_id,
-                table_name=table_name,
-                rows_processed=rows_processed,
+                total_rows=total_rows,
                 processing_time=processing_time
             )
-
+            
             return DatasetProcessingResponse(
                 dataset_id=dataset_id,
-                processing_status="completed",
-                rows_processed=rows_processed,
-                columns_processed=len(df.columns),
+                table_name=table_name,
+                total_rows=total_rows,
+                total_columns=total_columns,
                 processing_time_seconds=processing_time,
-                database_table_name=table_name,
-                errors=errors,
-                warnings=warnings
+                status="completed",
+                message=f"Dataset processed successfully: {total_rows} rows, {total_columns} columns"
             )
-
+            
         except Exception as e:
-            processing_time = (datetime.utcnow() - start_time).total_seconds()
-            error_msg = f"Dataset processing failed: {str(e)}"
-            errors.append(error_msg)
-
+            # Update dataset status to error
+            dataset.status = DatasetStatus.ERROR
+            dataset.updated_at = datetime.utcnow()
+            await db.commit()
+            
             logger.error("Dataset processing failed", dataset_id=dataset_id, error=str(e))
-
-            return DatasetProcessingResponse(
-                dataset_id=dataset_id,
-                processing_status="failed",
-                rows_processed=0,
-                columns_processed=0,
-                processing_time_seconds=processing_time,
-                database_table_name=None,
-                errors=errors,
-                warnings=warnings
-            )
+            raise ValueError(f"Failed to process dataset: {str(e)}")
 
     @staticmethod
     def _generate_create_table_sql(df: pd.DataFrame, table_name: str) -> str:

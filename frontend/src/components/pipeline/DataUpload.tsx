@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, FileText, Check, RefreshCw, AlertTriangle, Database, Eye, Plus, Search, Calendar, Target } from 'lucide-react';
+import { FileText, Upload, Search, ChevronRight, Loader2, CheckCircle, Database, Calendar, TrendingUp, AlertCircle, Target, Eye, Plus, RefreshCw, Check } from 'lucide-react';
+
 import { usePipeline } from '@/contexts/PipelineContext';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
@@ -15,18 +20,32 @@ const DataUpload = () => {
   const { pipelineData, updatePipelineData, goToStep, clearSavedState, completeStep, updateStepData, completeStepRemote } = usePipeline();
   const { toast } = useToast();
   
-  // Estados para upload
+  // Estados para armazenar dados
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [datasetName, setDatasetName] = useState('');
   const [datasetDescription, setDatasetDescription] = useState('');
+  const [datasetPreview, setDatasetPreview] = useState<DatasetPreview | null>(null);
   
+  // Estados para upload
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // DEBUG: Effect para logar quando datasetPreview muda
+  useEffect(() => {
+    if (datasetPreview) {
+      console.log('🔍 DEBUG - datasetPreview atualizado:', {
+        totalColumns: datasetPreview.columns.length,
+        totalRows: datasetPreview.total_rows,
+        firstFewColumns: datasetPreview.columns.slice(0, 10),
+        allColumns: datasetPreview.columns
+      });
+    }
+  }, [datasetPreview]);
+
   // Estados para datasets existentes
   const [existingDatasets, setExistingDatasets] = useState<Dataset[]>([]);
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
-  const [datasetPreview, setDatasetPreview] = useState<DatasetPreview | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   
   // Estados para busca
@@ -52,6 +71,25 @@ const DataUpload = () => {
     } finally {
       setIsLoadingDatasets(false);
     }
+  };
+
+  // Função utilitária para carregar dados completos
+  const loadCompleteDataset = async (datasetId: string): Promise<DatasetPreview> => {
+    // Primeiro buscar informações básicas
+    const basicPreview = await api.datasets.preview(datasetId, { rows: 1 });
+    
+    // DEBUG: Log das colunas recebidas
+    console.log('🔍 DEBUG - Colunas recebidas no preview básico:', basicPreview.columns.length);
+    console.log('🔍 DEBUG - Primeiras 10 colunas:', basicPreview.columns.slice(0, 10));
+    
+    // Depois carregar todos os dados
+    const completePreview = await api.datasets.preview(datasetId, { rows: basicPreview.total_rows });
+    
+    // DEBUG: Log das colunas recebidas no preview completo
+    console.log('🔍 DEBUG - Colunas recebidas no preview completo:', completePreview.columns.length);
+    console.log('🔍 DEBUG - Todas as colunas:', completePreview.columns);
+    
+    return completePreview;
   };
 
   // Função para detectar tipo de dados
@@ -120,10 +158,13 @@ const DataUpload = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.includes('csv') && !file.name.endsWith('.csv')) {
+    const validExtensions = ['.csv', '.h5', '.hdf5', '.xlsx', '.xls'];
+    const isValidFile = validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+    
+    if (!isValidFile) {
       toast({
         title: "Erro no upload",
-        description: "Por favor, selecione um arquivo CSV válido",
+        description: "Por favor, selecione um arquivo CSV, Excel ou HDF5 válido",
         variant: "destructive"
       });
       return;
@@ -155,7 +196,7 @@ const DataUpload = () => {
     try {
       setUploadProgress(30);
       
-      // Create form data for the upload
+      // 1. Fazer upload do arquivo para o backend
       const formData = new FormData();
       formData.append('file', uploadedFile);
       
@@ -171,88 +212,63 @@ const DataUpload = () => {
       
       setUploadProgress(60);
 
-      // 2. Processar dados localmente para detecção de colunas
-      const reader = new FileReader();
+      // 2. Buscar todos os dados completos
+      const datasetPreview: DatasetPreview = await loadCompleteDataset(uploadResponse.dataset_id.toString());
       
-      reader.onload = async (e) => {
-        const csvData = e.target?.result as string;
-        const lines = csvData.split('\n').filter(line => line.trim().length > 0);
-        const headers = lines[0].split(',').map(h => h.trim()).filter(h => h.length > 0);
-        
-        // Processar todos os dados
-        const allRows = lines.slice(1).map(line => {
-          const values = line.split(',');
-          const row: any = {};
-          headers.forEach((header, index) => {
-            row[header] = values[index]?.trim() || '';
-          });
-          return row;
-        });
-        
-        // Detectar colunas automaticamente
-        const suggestions = detectColumns(allRows, headers);
-        
-        // Salvar dados no contexto do pipeline
-        updatePipelineData({ 
-          file: uploadedFile,
-          datasetId: uploadResponse.dataset_id,
-          datasetName: datasetName,
-          columns: headers, 
-          data: allRows,
-          dateColumn: suggestions.dateColumn || '',
-          targetColumn: suggestions.targetColumn || '',
-          totalRows: allRows.length
-        });
-        
-        setIsProcessing(false);
-        setUploadProgress(100);
-        
-        toast({
-          title: "Dataset salvo com sucesso!",
-          description: `${headers.length} colunas e ${allRows.length} registros processados.`,
-        });
+      setUploadProgress(80);
 
-        // Enviar dados para a API se há pipeline ID
-        if (pipelineData.pipelineId) {
-          try {
-            const stepData = {
-              dataset_id: uploadResponse.dataset_id,
-              dataset_name: datasetName,
-              total_rows: allRows.length,
-              total_columns: headers.length,
-              file_size: uploadedFile.size,
-              file_type: 'csv',
-              upload_timestamp: new Date().toISOString()
-            };
+      // 3. Detectar colunas automaticamente usando os dados processados
+      const suggestions = detectColumns(datasetPreview.data, datasetPreview.columns);
+      
+      // 4. Salvar dados no contexto do pipeline
+      updatePipelineData({ 
+        file: uploadedFile,
+        datasetId: uploadResponse.dataset_id,
+        datasetName: datasetName,
+        columns: datasetPreview.columns, 
+        data: datasetPreview.data,
+        dateColumn: suggestions.dateColumn || '',
+        targetColumn: suggestions.targetColumn || '',
+        totalRows: datasetPreview.total_rows
+      });
+      
+      setIsProcessing(false);
+      setUploadProgress(100);
+      
+      toast({
+        title: "Dataset salvo com sucesso!",
+        description: `${datasetPreview.columns.length} colunas e ${datasetPreview.total_rows} registros processados.`,
+      });
 
-            await updateStepData('upload', stepData);
-            await completeStepRemote('upload');
-          } catch (apiError) {
-            console.error('Erro ao atualizar step na API:', apiError);
-            // Continuar mesmo se falhar na API
-          }
+      // 5. Enviar dados para a API se há pipeline ID
+      if (pipelineData.pipelineId) {
+        try {
+          const stepData = {
+            dataset_id: uploadResponse.dataset_id,
+            dataset_name: datasetName,
+            total_rows: datasetPreview.total_rows,
+            total_columns: datasetPreview.columns.length,
+            file_size: uploadedFile.size,
+            file_type: uploadedFile.name.split('.').pop() || 'unknown',
+            upload_timestamp: new Date().toISOString()
+          };
+
+          await updateStepData('upload', stepData);
+          await completeStepRemote('upload');
+        } catch (apiError) {
+          console.error('Erro ao atualizar step na API:', apiError);
+          // Continuar mesmo se falhar na API
         }
+      }
 
-        // Recarregar lista de datasets
-        await loadExistingDatasets();
+      // 6. Recarregar lista de datasets
+      await loadExistingDatasets();
 
-        // Redirecionar automaticamente para preview
-        setTimeout(() => {
-          completeStep('upload');
-          goToStep('preview');
-        }, 1000);
-      };
-      
-      reader.onerror = () => {
-        setIsProcessing(false);
-        toast({
-          title: "Erro no processamento",
-          description: "Erro ao ler o arquivo CSV",
-          variant: "destructive"
-        });
-      };
-      
-      reader.readAsText(uploadedFile);
+      // 7. Redirecionar automaticamente para preview
+      setTimeout(() => {
+        completeStep('upload');
+        goToStep('preview');
+      }, 1000);
 
     } catch (error) {
       setIsProcessing(false);
@@ -271,8 +287,14 @@ const DataUpload = () => {
     setSelectedDataset(dataset);
     
     try {
-      const preview: DatasetPreview = await api.datasets.preview(dataset.id.toString(), { limit: 10 });
-      setDatasetPreview(preview);
+      // Carregar TODOS os dados do dataset
+      const fullPreview = await loadCompleteDataset(dataset.id.toString());
+      
+      // DEBUG: Log das colunas recebidas
+      console.log('🔍 DEBUG - Colunas recebidas no handleLoadDatasetPreview:', fullPreview.columns.length);
+      console.log('🔍 DEBUG - Primeiras 10 colunas:', fullPreview.columns.slice(0, 10));
+      
+      setDatasetPreview(fullPreview);
     } catch (error) {
       toast({
         title: "Erro ao carregar preview",
@@ -298,8 +320,8 @@ const DataUpload = () => {
     setIsProcessing(true);
 
     try {
-      // Carregar TODOS os dados do dataset, não apenas o preview
-      const fullDataset: DatasetPreview = await api.datasets.preview(dataset.id.toString(), { limit: datasetPreview.total_rows });
+      // Carregar TODOS os dados do dataset
+      const fullDataset: DatasetPreview = await loadCompleteDataset(dataset.id.toString());
       
       // Detectar colunas automaticamente
       const suggestions = detectColumns(fullDataset.data, fullDataset.columns);
@@ -523,7 +545,7 @@ const DataUpload = () => {
       <div className="text-center">
         <h2 className="text-2xl font-bold">Upload de Dados</h2>
         <p className="text-muted-foreground mt-2">
-          Carregue um novo dataset ou use um dataset existente
+          Carregue um novo dataset ou use um dataset existente (suporte para CSV, Excel e HDF5)
         </p>
       </div>
 
@@ -543,7 +565,7 @@ const DataUpload = () => {
                 Upload de Novo Dataset
               </CardTitle>
               <CardDescription>
-                Carregue um arquivo CSV para criar um novo dataset
+                Carregue um arquivo CSV, Excel ou HDF5 para criar um novo dataset
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -570,23 +592,23 @@ const DataUpload = () => {
               </div>
 
               {/* Upload de Arquivo */}
-              <div className="space-y-4">
-                <Label htmlFor="file-upload">Arquivo CSV *</Label>
+              <div className="space-y-2">
+                <Label htmlFor="file-upload">Arquivo de Dados *</Label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
                   <input
                     id="file-upload"
                     type="file"
-                    accept=".csv"
+                    accept=".csv,.h5,.hdf5,.xlsx,.xls"
                     onChange={handleFileUpload}
                     className="hidden"
                   />
                   <label htmlFor="file-upload" className="cursor-pointer">
                     <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
                     <p className="text-lg font-medium text-gray-700">
-                      Clique para selecionar um arquivo CSV
+                      Clique para selecionar um arquivo
                     </p>
                     <p className="text-sm text-gray-500 mt-2">
-                      Ou arraste e solte o arquivo aqui
+                      Suporte para CSV, Excel (.xlsx, .xls) e HDF5 (.h5, .hdf5)
                     </p>
                   </label>
                 </div>
@@ -756,7 +778,7 @@ const DataUpload = () => {
                           </div>
                           <div>
                             <span className="font-medium">Preview:</span>
-                            <p className="text-muted-foreground">{datasetPreview.preview_rows} registros</p>
+                            <p className="text-muted-foreground">{datasetPreview.data.length.toLocaleString()} registros carregados</p>
                           </div>
                           <div>
                             <span className="font-medium">Tipos de Dados:</span>
@@ -765,19 +787,24 @@ const DataUpload = () => {
                         </div>
 
                         {/* Tabela de Preview */}
-                        <div className="border rounded-lg overflow-hidden">
-                          <div className="overflow-x-auto max-h-64">
+                        <div>
+                          <h4 className="font-medium mb-2">Preview dos Dados - Exibindo {datasetPreview.data.length.toLocaleString()} registros</h4>
+                          <div className="overflow-x-auto max-h-96 overflow-y-auto">
                             <table className="w-full text-sm">
-                              <thead className="bg-gray-50">
+                              <thead className="sticky top-0 bg-gray-50">
                                 <tr>
-                                  {datasetPreview.columns.map((column) => (
-                                    <th key={column} className="px-3 py-2 text-left font-medium text-gray-700 border-r">
-                                      {column}
-                                      <div className="text-xs text-gray-500 font-normal">
-                                        {datasetPreview.data_types[column]}
-                                      </div>
-                                    </th>
-                                  ))}
+                                  {datasetPreview.columns.map((column) => {
+                                    // DEBUG: Log da coluna sendo renderizada
+                                    console.log('📊 DEBUG - Renderizando coluna:', column);
+                                    return (
+                                      <th key={column} className="px-3 py-2 text-left font-medium text-gray-700 border-r">
+                                        {column}
+                                        <div className="text-xs text-gray-500 font-normal">
+                                          {datasetPreview.data_types[column]}
+                                        </div>
+                                      </th>
+                                    );
+                                  })}
                                 </tr>
                               </thead>
                               <tbody>
@@ -793,6 +820,11 @@ const DataUpload = () => {
                               </tbody>
                             </table>
                           </div>
+                          {datasetPreview.data.length > 100 && (
+                            <div className="mt-2 text-sm text-gray-500 text-center">
+                              💡 Tip: Use o scroll vertical para navegar pelos {datasetPreview.data.length.toLocaleString()} registros
+                            </div>
+                          )}
                         </div>
 
                         {/* Botão para Usar Dataset */}
