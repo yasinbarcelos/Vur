@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Database, Download, Trash2, Search, Eye, RefreshCw, Plus, Calendar, FileText, AlertTriangle, CheckCircle } from "lucide-react";
+import { Upload, Database, Download, Trash2, Search, Eye, RefreshCw, Plus, Calendar, FileText, AlertTriangle, CheckCircle, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { Dataset, DatasetListResponse, DatasetUploadResponse, DatasetPreview } from "@/types/dataset";
@@ -157,7 +157,15 @@ const DataManagement = () => {
     }
   };
 
-  // Função utilitária para carregar dados completos
+  // Função para carregar apenas informações básicas (preview rápido)
+  const loadBasicDatasetInfo = async (datasetId: string): Promise<DatasetPreview> => {
+    // Carregar apenas informações básicas para preview rápido
+    const basicPreview = await api.datasets.preview(datasetId, { rows: 50 });
+    
+    return basicPreview;
+  };
+
+  // Função para carregar dados completos (quando necessário)
   const loadCompleteDataset = async (datasetId: string): Promise<DatasetPreview> => {
     // Primeiro buscar informações básicas
     const basicPreview = await api.datasets.preview(datasetId, { rows: 1 });
@@ -168,15 +176,15 @@ const DataManagement = () => {
     return completePreview;
   };
 
-  // Função para carregar preview de dataset
+  // Função para carregar preview de dataset (apenas informações básicas)
   const handleLoadPreview = async (dataset: Dataset) => {
     setIsLoadingPreview(true);
     setSelectedDataset(dataset);
     
     try {
-      // Buscar todos os dados completos
-      const fullPreview: DatasetPreview = await loadCompleteDataset(dataset.id.toString());
-      setDatasetPreview(fullPreview);
+      // Buscar apenas informações básicas para preview rápido
+      const basicPreview: DatasetPreview = await loadBasicDatasetInfo(dataset.id.toString());
+      setDatasetPreview(basicPreview);
     } catch (error) {
       toast({
         title: "Erro ao carregar preview",
@@ -469,12 +477,20 @@ const DataManagement = () => {
                         </div>
                         <div>
                           <span className="font-medium">Preview:</span>
-                          <p className="text-muted-foreground">{datasetPreview.preview_rows} registros</p>
+                          <p className="text-muted-foreground">{datasetPreview.preview_rows} registros (amostra)</p>
                         </div>
                         <div>
                           <span className="font-medium">Tipos de Dados:</span>
                           <p className="text-muted-foreground">{Object.keys(datasetPreview.data_types).length} tipos</p>
                         </div>
+                      </div>
+
+                      {/* Aviso de Amostra */}
+                      <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <Info className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm text-blue-700">
+                          <strong>Preview Rápido:</strong> Exibindo apenas {datasetPreview.data.length} registros para visualização das colunas e tipos de dados.
+                        </span>
                       </div>
 
                       {/* Tabela de Preview */}

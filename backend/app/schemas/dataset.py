@@ -150,7 +150,7 @@ class DatasetProcessingRequest(BaseModel):
     """Schema for dataset processing request."""
     dataset_id: int
     save_to_database: bool = Field(True, description="Whether to save processed data to database")
-    chunk_size: int = Field(10000, ge=1000, le=100000, description="Chunk size for processing")
+    chunk_size: int = Field(10000, ge=1000, le=1000000, description="Chunk size for processing")
 
 
 class DatasetProcessingResponse(BaseModel):

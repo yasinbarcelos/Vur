@@ -9,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Upload, Search, ChevronRight, Loader2, CheckCircle, Database, Calendar, TrendingUp, AlertCircle, Target, Eye, Plus, RefreshCw, Check } from 'lucide-react';
+import { FileText, Upload, Search, ChevronRight, Loader2, CheckCircle, Database, Calendar, TrendingUp, AlertCircle, Target, Eye, Plus, RefreshCw, Check, Info } from 'lucide-react';
 
 import { usePipeline } from '@/contexts/PipelineContext';
 import { useToast } from '@/hooks/use-toast';
@@ -71,6 +71,14 @@ const DataUpload = () => {
     } finally {
       setIsLoadingDatasets(false);
     }
+  };
+
+  // Função para carregar apenas informações básicas (preview rápido)
+  const loadBasicDatasetInfo = async (datasetId: string): Promise<DatasetPreview> => {
+    // Carregar apenas informações básicas para preview rápido
+    const basicPreview = await api.datasets.preview(datasetId, { rows: 50 });
+    
+    return basicPreview;
   };
 
   // Função utilitária para carregar dados completos
@@ -281,20 +289,20 @@ const DataUpload = () => {
     }
   };
 
-  // Função para carregar preview de dataset existente
+  // Função para carregar preview de dataset existente (apenas informações básicas)
   const handleLoadDatasetPreview = async (dataset: Dataset) => {
     setIsLoadingPreview(true);
     setSelectedDataset(dataset);
     
     try {
-      // Carregar TODOS os dados do dataset
-      const fullPreview = await loadCompleteDataset(dataset.id.toString());
+      // Carregar apenas informações básicas para preview rápido
+      const basicPreview = await loadBasicDatasetInfo(dataset.id.toString());
       
       // DEBUG: Log das colunas recebidas
-      console.log('🔍 DEBUG - Colunas recebidas no handleLoadDatasetPreview:', fullPreview.columns.length);
-      console.log('🔍 DEBUG - Primeiras 10 colunas:', fullPreview.columns.slice(0, 10));
+      console.log('🔍 DEBUG - Colunas recebidas no handleLoadDatasetPreview:', basicPreview.columns.length);
+      console.log('🔍 DEBUG - Primeiras 10 colunas:', basicPreview.columns.slice(0, 10));
       
-      setDatasetPreview(fullPreview);
+      setDatasetPreview(basicPreview);
     } catch (error) {
       toast({
         title: "Erro ao carregar preview",
@@ -778,12 +786,20 @@ const DataUpload = () => {
                           </div>
                           <div>
                             <span className="font-medium">Preview:</span>
-                            <p className="text-muted-foreground">{datasetPreview.data.length.toLocaleString()} registros carregados</p>
+                            <p className="text-muted-foreground">{datasetPreview.data.length.toLocaleString()} registros (amostra)</p>
                           </div>
                           <div>
                             <span className="font-medium">Tipos de Dados:</span>
                             <p className="text-muted-foreground">{Object.keys(datasetPreview.data_types).length} tipos</p>
                           </div>
+                        </div>
+
+                        {/* Aviso de Amostra */}
+                        <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <Info className="w-4 h-4 text-blue-600" />
+                          <span className="text-sm text-blue-700">
+                            <strong>Preview Rápido:</strong> Exibindo apenas {datasetPreview.data.length} registros para visualização das colunas e tipos de dados.
+                          </span>
                         </div>
 
                         {/* Tabela de Preview */}
@@ -820,11 +836,6 @@ const DataUpload = () => {
                               </tbody>
                             </table>
                           </div>
-                          {datasetPreview.data.length > 100 && (
-                            <div className="mt-2 text-sm text-gray-500 text-center">
-                              💡 Tip: Use o scroll vertical para navegar pelos {datasetPreview.data.length.toLocaleString()} registros
-                            </div>
-                          )}
                         </div>
 
                         {/* Botão para Usar Dataset */}

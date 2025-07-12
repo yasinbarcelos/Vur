@@ -204,7 +204,7 @@ async def get_dataset(
 @router.get("/{dataset_id}/preview", response_model=DatasetPreviewResponse)
 async def preview_dataset(
     dataset_id: int,
-    rows: int = Query(10, ge=1, le=100, description="Number of rows to preview"),
+    rows: int = Query(10, ge=1, le=1000000, description="Number of rows to preview"),
     current_user: User = Depends(AuthService.get_current_active_user),
     db: AsyncSession = Depends(get_async_session)
 ):
@@ -1013,7 +1013,7 @@ async def get_dataset_columns(
 @router.post("/{dataset_id}/process", response_model=DatasetProcessingResponse)
 async def process_dataset(
     dataset_id: int,
-    chunk_size: int = Query(10000, ge=1000, le=100000, description="Chunk size for processing"),
+    chunk_size: int = Query(10000, ge=1000, le=1000000, description="Chunk size for processing"),
     current_user: User = Depends(AuthService.get_current_active_user),
     db: AsyncSession = Depends(get_async_session)
 ):
